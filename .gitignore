@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Rust / Cargo (redundant with src-tauri/.gitignore but covers root)
+target/
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/schemas
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*

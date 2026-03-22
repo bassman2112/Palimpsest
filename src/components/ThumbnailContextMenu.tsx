@@ -1,0 +1,88 @@
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+
+interface ThumbnailContextMenuProps {
+  x: number;
+  y: number;
+  pageNumber: number;
+  totalPages: number;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onReorder: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}
+
+export function ThumbnailContextMenu({
+  x,
+  y,
+  pageNumber,
+  totalPages,
+  onMoveUp,
+  onMoveDown,
+  onReorder,
+  onDelete,
+  onClose,
+}: ThumbnailContextMenuProps) {
+  useEffect(() => {
+    const handleMouseDown = () => {
+      setTimeout(onClose, 0);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const handleScroll = () => onClose();
+
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [onClose]);
+
+  const isFirst = pageNumber === 1;
+  const isLast = pageNumber === totalPages;
+  const onlyPage = totalPages <= 1;
+
+  return createPortal(
+    <div
+      className="thumbnail-context-menu"
+      style={{ position: "fixed", left: x, top: y }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <button
+        className="context-menu-item"
+        disabled={isFirst}
+        onClick={() => { onMoveUp(); onClose(); }}
+      >
+        Move Up
+      </button>
+      <button
+        className="context-menu-item"
+        disabled={isLast}
+        onClick={() => { onMoveDown(); onClose(); }}
+      >
+        Move Down
+      </button>
+      <button
+        className="context-menu-item"
+        disabled={onlyPage}
+        onClick={() => { onReorder(); onClose(); }}
+      >
+        Reorder
+      </button>
+      <div className="context-menu-separator" />
+      <button
+        className="context-menu-item context-menu-item-danger"
+        disabled={onlyPage}
+        onClick={() => { onDelete(); onClose(); }}
+      >
+        Delete Page
+      </button>
+    </div>,
+    document.body
+  );
+}
