@@ -6,17 +6,30 @@ interface StickyNoteProps {
   annotation: StickyNoteAnnotation;
   dimension: PageDimension;
   zoom: number;
+  selected: boolean;
+  onSelect: () => void;
   onUpdate: (updates: Partial<StickyNoteAnnotation>) => void;
   onDelete: () => void;
+  onContextMenu: (x: number, y: number) => void;
 }
 
-export function StickyNote({ annotation, dimension, zoom, onUpdate, onDelete }: StickyNoteProps) {
+export function StickyNote({
+  annotation,
+  dimension,
+  zoom,
+  selected,
+  onSelect,
+  onUpdate,
+  onDelete,
+  onContextMenu,
+}: StickyNoteProps) {
   // Auto-open for newly created (empty text) notes
   const [open, setOpen] = useState(() => annotation.text === "");
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
   const popoverRef = useRef<HTMLDivElement>(null);
   const iconRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const didDragRef = useRef(false);
 
   const left = annotation.x * dimension.width * zoom;
   const top = annotation.y * dimension.height * zoom;
@@ -88,23 +101,68 @@ export function StickyNote({ annotation, dimension, zoom, onUpdate, onDelete }: 
     return () => document.removeEventListener("scroll", handleScroll, true);
   }, [open]);
 
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      // Don't start drag if popover is open
+      if (open) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect();
+      didDragRef.current = false;
+
+      const startMouseX = e.clientX;
+      const startMouseY = e.clientY;
+      const startAnnX = annotation.x;
+      const startAnnY = annotation.y;
+      const pageW = dimension.width * zoom;
+      const pageH = dimension.height * zoom;
+
+      const handleMouseMove = (ev: MouseEvent) => {
+        const dx = ev.clientX - startMouseX;
+        const dy = ev.clientY - startMouseY;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) didDragRef.current = true;
+        onUpdate({
+          x: startAnnX + dx / pageW,
+          y: startAnnY + dy / pageH,
+        });
+      };
+
+      const handleMouseUp = () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [open, annotation.x, annotation.y, dimension, zoom, onUpdate, onSelect]
+  );
+
   return (
     <div
-      className="sticky-note-wrapper"
+      className={`sticky-note-wrapper${selected ? " annotation-selected" : ""}`}
       style={{ position: "absolute", left, top, pointerEvents: "auto" }}
     >
       <div
         ref={iconRef}
         className="sticky-note-icon"
+        onMouseDown={handleDragStart}
         onClick={(e) => {
           e.stopPropagation();
+          if (didDragRef.current) return;
+          onSelect();
           if (open) {
             setOpen(false);
           } else {
             openPopover();
           }
         }}
-        style={{ backgroundColor: annotation.color }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e.clientX, e.clientY);
+        }}
+        style={{ backgroundColor: annotation.color, cursor: open ? "pointer" : "move" }}
         title="Click to edit note"
       >
         📝

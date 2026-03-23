@@ -17,6 +17,7 @@ interface PdfViewerProps {
   scrollToPageRef: React.MutableRefObject<((page: number) => void) | null>;
   viewerContainerRef?: React.MutableRefObject<HTMLDivElement | null>;
   activeTool: AnnotationTool;
+  highlightColor: string;
   onAddAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   onDeleteAnnotation: (id: string) => void;
@@ -24,6 +25,7 @@ interface PdfViewerProps {
   searchQuery: string;
   searchMatches: SearchMatch[];
   currentMatch: SearchMatch | null;
+  pendingSignature?: string | null;
 }
 
 export function PdfViewer({
@@ -35,6 +37,7 @@ export function PdfViewer({
   scrollToPageRef,
   viewerContainerRef,
   activeTool,
+  highlightColor,
   onAddAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
@@ -42,6 +45,7 @@ export function PdfViewer({
   searchQuery,
   searchMatches,
   currentMatch,
+  pendingSignature,
 }: PdfViewerProps) {
   const { containerRef, visiblePages, currentPage, scrollToPage } = usePageVisibility({
     zoom,
@@ -111,12 +115,14 @@ export function PdfViewer({
             isVisible={visiblePages.has(dim.pageNumber)}
             annotations={getPageAnnotations(dim.pageNumber)}
             activeTool={activeTool}
+            highlightColor={highlightColor}
             onAddAnnotation={onAddAnnotation}
             onUpdateAnnotation={onUpdateAnnotation}
             onDeleteAnnotation={onDeleteAnnotation}
             searchQuery={searchQuery}
             searchMatches={pageMatches}
             selectedMatchIndex={selectedMatchIndex}
+            pendingSignature={pendingSignature}
           />
         );
       })}

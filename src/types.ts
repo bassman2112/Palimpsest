@@ -1,10 +1,12 @@
+import type { PDFDocumentProxy } from "pdfjs-dist";
+
 export interface PageDimension {
   pageNumber: number;
   width: number;
   height: number;
 }
 
-export type AnnotationTool = "none" | "highlight" | "sticky-note";
+export type AnnotationTool = "none" | "highlight" | "sticky-note" | "signature";
 
 export interface HighlightAnnotation {
   id: string;
@@ -27,4 +29,32 @@ export interface StickyNoteAnnotation {
   color: string;
 }
 
-export type Annotation = HighlightAnnotation | StickyNoteAnnotation;
+export interface SignatureAnnotation {
+  id: string;
+  type: "signature";
+  pageNumber: number;
+  x: number;       // normalized 0-1
+  y: number;       // normalized 0-1
+  width: number;   // normalized 0-1
+  height: number;  // normalized 0-1
+  imageData: string; // data URL (JPEG with white background)
+}
+
+export type Annotation = HighlightAnnotation | StickyNoteAnnotation | SignatureAnnotation;
+
+export interface MergeSource {
+  path: string;
+  fileName: string;
+  pdfDoc: PDFDocumentProxy;
+  pageDimensions: PageDimension[];
+}
+
+export interface MergePage {
+  id: string;                // unique key: `${sourceIndex}:${sourcePageNumber}`
+  sourceIndex: number;       // index in sources array
+  sourcePath: string;
+  sourceFileName: string;
+  sourcePageNumber: number;  // 1-indexed within source
+  pdfDoc: PDFDocumentProxy;
+  dimension: PageDimension;
+}

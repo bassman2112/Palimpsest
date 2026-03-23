@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { RenderTask } from "pdfjs-dist";
-import { TextLayer } from "pdfjs-dist";
+import { TextLayer, AnnotationLayer } from "pdfjs-dist";
 import type { PageDimension, Annotation, AnnotationTool } from "../types";
 import type { SearchMatch } from "../hooks/useTextSearch";
 import { AnnotationOverlay } from "./AnnotationOverlay";
@@ -13,12 +13,14 @@ interface PageCanvasProps {
   isVisible: boolean;
   annotations: Annotation[];
   activeTool: AnnotationTool;
+  highlightColor: string;
   onAddAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   onDeleteAnnotation: (id: string) => void;
   searchQuery: string;
   searchMatches: SearchMatch[];
   selectedMatchIndex: number;
+  pendingSignature?: string | null;
 }
 
 export function PageCanvas({
@@ -28,18 +30,22 @@ export function PageCanvas({
   isVisible,
   annotations,
   activeTool,
+  highlightColor,
   onAddAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
   searchQuery,
   searchMatches,
   selectedMatchIndex,
+  pendingSignature,
 }: PageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
+  const annotationLayerRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
   const textLayerInstanceRef = useRef<TextLayer | null>(null);
+  const annotationLayerInstanceRef = useRef<AnnotationLayer | null>(null);
   const renderGenRef = useRef(0);
   // Bumped after text layer renders so the highlight effect re-runs
   const [textLayerReady, setTextLayerReady] = useState(0);
@@ -95,6 +101,52 @@ export function PageCanvas({
 
         if (cancelled || generation !== renderGenRef.current) return;
 
+        // Render AnnotationLayer (form fields, links, etc.)
+        const annotationLayerDiv = annotationLayerRef.current;
+        if (annotationLayerDiv) {
+          annotationLayerDiv.innerHTML = "";
+          const pdfAnnotations = await page.getAnnotations();
+          if (cancelled || generation !== renderGenRef.current) return;
+
+          // Minimal link service that does nothing (we don't navigate links)
+          const linkService = {
+            getDestinationHash: () => "#",
+            getAnchorUrl: () => "#",
+            addLinkAttributes: () => {},
+            isPageVisible: () => true,
+            isPageCached: () => true,
+            externalLinkEnabled: true,
+            externalLinkTarget: 0,
+            externalLinkRel: "noopener noreferrer nofollow",
+          };
+
+          const annotLayer = new AnnotationLayer({
+            div: annotationLayerDiv,
+            accessibilityManager: null,
+            annotationCanvasMap: null,
+            annotationEditorUIManager: null,
+            page,
+            viewport,
+            structTreeLayer: null,
+            commentManager: null,
+            linkService: linkService as any,
+            annotationStorage: pdfDoc.annotationStorage,
+          } as any);
+          annotationLayerInstanceRef.current = annotLayer;
+
+          await annotLayer.render({
+            viewport,
+            div: annotationLayerDiv,
+            annotations: pdfAnnotations,
+            page,
+            linkService: linkService as any,
+            renderForms: true,
+            annotationStorage: pdfDoc.annotationStorage,
+          });
+        }
+
+        if (cancelled || generation !== renderGenRef.current) return;
+
         setTextLayerReady((v) => v + 1);
       } catch (err: any) {
         if (err?.name !== "RenderingCancelledException" && !cancelled) {
@@ -114,9 +166,13 @@ export function PageCanvas({
         try { textLayerInstanceRef.current.cancel(); } catch {}
         textLayerInstanceRef.current = null;
       }
+      annotationLayerInstanceRef.current = null;
       // Clear text layer DOM
       if (textLayerRef.current) {
         textLayerRef.current.innerHTML = "";
+      }
+      if (annotationLayerRef.current) {
+        annotationLayerRef.current.innerHTML = "";
       }
       // Release GPU memory
       if (canvasRef.current) {
@@ -198,6 +254,7 @@ export function PageCanvas({
       {isVisible && (
         <>
           <div ref={textLayerRef} className="textLayer" />
+          <div ref={annotationLayerRef} className="annotationLayer" />
           <div ref={highlightRef} className="search-highlights" />
           <AnnotationOverlay
             pageNumber={dimension.pageNumber}
@@ -207,9 +264,11 @@ export function PageCanvas({
             zoom={zoom}
             annotations={annotations}
             activeTool={activeTool}
+            highlightColor={highlightColor}
             onAddAnnotation={onAddAnnotation}
             onUpdateAnnotation={onUpdateAnnotation}
             onDeleteAnnotation={onDeleteAnnotation}
+            pendingSignature={pendingSignature}
           />
         </>
       )}

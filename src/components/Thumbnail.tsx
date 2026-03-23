@@ -10,14 +10,18 @@ interface ThumbnailProps {
   dimension: PageDimension;
   isActive: boolean;
   isDragging?: boolean;
+  isSelected?: boolean;
   size?: number;
-  onClick: () => void;
+  label?: string;
+  onClick: (e: React.MouseEvent) => void;
+  onDoubleClick?: () => void;
   onDeletePage?: (pageNumber: number) => void;
+  onDeleteMergePage?: () => void;
   onContextMenu?: (pageNumber: number, x: number, y: number) => void;
   onPointerDown?: (pageNumber: number, e: React.PointerEvent) => void;
 }
 
-export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, size, onClick, onDeletePage, onContextMenu, onPointerDown }: ThumbnailProps) {
+export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected, size, label, onClick, onDoubleClick, onDeletePage, onDeleteMergePage, onContextMenu, onPointerDown }: ThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
@@ -75,8 +79,9 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, size, onCli
   return (
     <div
       ref={containerRef}
-      className={`thumbnail ${isActive ? "thumbnail-active" : ""}${isDragging ? " thumbnail-dragging" : ""}`}
-      onClick={onClick}
+      className={`thumbnail ${isActive ? "thumbnail-active" : ""}${isDragging ? " thumbnail-dragging" : ""}${isSelected ? " thumbnail-selected" : ""}`}
+      onClick={(e) => onClick(e)}
+      onDoubleClick={onDoubleClick}
       onPointerDown={(e) => {
         if (e.button === 0) onPointerDown?.(dimension.pageNumber, e);
       }}
@@ -90,7 +95,20 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, size, onCli
           ref={canvasRef}
           style={{ width: thumbWidth, height: thumbHeight }}
         />
-        {onDeletePage && (
+        {isSelected && <div className="thumbnail-select-check">&#10003;</div>}
+        {onDeleteMergePage && (
+          <button
+            className="thumbnail-delete-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteMergePage();
+            }}
+            title="Remove page"
+          >
+            ✕
+          </button>
+        )}
+        {!onDeleteMergePage && onDeletePage && (
           <button
             className="thumbnail-delete-btn"
             onClick={(e) => {
@@ -103,7 +121,7 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, size, onCli
           </button>
         )}
       </div>
-      <span className="thumbnail-label">{dimension.pageNumber}</span>
+      <span className="thumbnail-label">{label ?? dimension.pageNumber}</span>
     </div>
   );
 }

@@ -1,3 +1,25 @@
+/* Signature fonts */
+@font-face {
+  font-family: 'Dancing Script';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/DancingScript.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Great Vibes';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/GreatVibes.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Caveat';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/Caveat.woff2') format('woff2');
+}
+
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
@@ -16,6 +38,7 @@
 
 html, body, #root {
   height: 100%;
+  overflow: hidden;
 }
 
 .app {
@@ -23,7 +46,181 @@ html, body, #root {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  padding-top: 3px;
+}
+
+/* Document view (one per tab) */
+.document-view {
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Tab bar — sits in the title bar overlay (Firefox-style on macOS) */
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  background: #e8e8e8;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+  overflow-x: auto;
+  padding-left: 78px; /* space for macOS traffic lights */
+}
+
+.tab-drag-spacer {
+  flex: 1;
+  min-width: 100px;
+  -webkit-app-region: drag;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border-right: 1px solid #ddd;
+  white-space: nowrap;
+  max-width: 200px;
+  min-width: 0;
+  user-select: none;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.tab-active {
+  background: #fff;
+  border-bottom: 1px solid #fff;
+  margin-bottom: -1px;
+}
+
+.tab-active:hover {
+  background: #fff;
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-unsaved {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #666;
+  flex-shrink: 0;
+}
+
+.tab-close {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.tab:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #333;
+}
+
+.tab-new {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.tab-new:hover {
+  color: #333;
+}
+
+.theme-toggle {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #888;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  margin-right: 8px;
+}
+
+.theme-toggle:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #333;
+}
+
+/* Tab context menu (color picker) */
+.tab-context-menu {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 200;
+  min-width: 140px;
+  padding: 4px 0;
+}
+
+.tab-context-label {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tab-color-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-color-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1a1a1a;
+  text-align: left;
+  width: 100%;
+}
+
+.tab-color-option:hover {
+  background: #f0f0f0;
+}
+
+.tab-color-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* Toolbar */
@@ -45,6 +242,10 @@ html, body, #root {
   cursor: pointer;
   font-size: 14px;
   min-width: 32px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .toolbar button:hover:not(:disabled) {
@@ -64,6 +265,138 @@ html, body, #root {
 
 .toolbar button.tool-active:hover:not(:disabled) {
   background: #1d4ed8;
+}
+
+/* Highlight tool group (button + color picker) */
+.highlight-tool-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.highlight-color-btn {
+  padding: 6px 6px !important;
+  min-width: 20px !important;
+  border-left: none !important;
+  border-radius: 0 4px 4px 0 !important;
+  align-self: stretch;
+}
+
+.highlight-tool-group > button:first-child {
+  border-radius: 4px 0 0 4px !important;
+}
+
+.highlight-color-dot {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.highlight-color-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  min-width: 120px;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.toolbar .highlight-color-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1a1a1a;
+  text-align: left;
+  width: 100%;
+}
+
+.toolbar .highlight-color-option:hover {
+  background: #f0f0f0;
+}
+
+.toolbar .highlight-color-active {
+  background: #e8f0fe;
+}
+
+.highlight-color-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+/* Save split button */
+.save-tool-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.save-tool-group > button:first-child {
+  border-radius: 4px 0 0 4px !important;
+}
+
+.save-dropdown-btn {
+  padding: 6px 6px !important;
+  min-width: 20px !important;
+  border-left: none !important;
+  border-radius: 0 4px 4px 0 !important;
+  align-self: stretch;
+}
+
+.save-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.toolbar .save-dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1a1a1a;
+  text-align: left;
+  width: 100%;
+}
+
+.toolbar .save-dropdown-option:hover {
+  background: #f0f0f0;
+}
+
+.save-shortcut {
+  font-size: 11px;
+  color: #888;
 }
 
 /* Custom tooltips (500ms delay) */
@@ -213,6 +546,7 @@ html, body, #root {
 .pdf-scroll-container {
   flex: 1;
   overflow: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -288,6 +622,7 @@ html, body, #root {
 .thumbnail-sidebar {
   width: 200px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-right: 1px solid #ddd;
   background: #fafafa;
   display: flex;
@@ -429,6 +764,7 @@ html, body, #root {
 .page-gallery {
   flex: 1;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 24px;
   position: relative;
 }
@@ -453,6 +789,97 @@ html, body, #root {
   z-index: 10;
 }
 
+.gallery-add-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 200px;
+  min-height: 260px;
+  border: 2px dashed #aaa;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #888;
+  font-size: 14px;
+  gap: 8px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.gallery-add-tile:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.merge-save-btn {
+  background: #2563eb !important;
+  color: #fff !important;
+  border-color: #1d4ed8 !important;
+}
+
+/* Multi-select */
+.thumbnail-selected {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.thumbnail-select-check {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #fff;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.gallery-selection-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: #fff;
+  border-top: 1px solid #ddd;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+  font-size: 13px;
+  z-index: 20;
+}
+
+.gallery-selection-delete {
+  padding: 5px 14px;
+  border: 1px solid #dc2626;
+  border-radius: 4px;
+  background: #dc2626;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.gallery-selection-delete:hover {
+  background: #b91c1c;
+}
+
+.gallery-selection-clear {
+  padding: 5px 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.gallery-selection-clear:hover {
+  background: #e8e8e8;
+}
+
 /* Annotation overlay */
 .annotation-overlay {
   z-index: 10;
@@ -471,9 +898,79 @@ html, body, #root {
   outline-offset: -1px;
 }
 
+/* Highlight resize handles */
+.highlight-resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #2563eb;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  z-index: 1;
+}
+
+.highlight-resize-tl { top: -4px; left: -4px; cursor: nwse-resize; }
+.highlight-resize-tr { top: -4px; right: -4px; cursor: nesw-resize; }
+.highlight-resize-bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.highlight-resize-br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+/* Selected annotation indicator */
+.annotation-selected {
+  outline: 2px solid #2563eb !important;
+  outline-offset: -1px;
+}
+
+/* Annotation right-click context menu */
+.annotation-context-menu {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 200;
+  min-width: 100px;
+  padding: 4px 0;
+  pointer-events: auto;
+}
+
+.annotation-context-delete {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  color: #dc2626;
+}
+
+.annotation-context-delete:hover {
+  background: #f5f5f5;
+}
+
+/* Annotation context menu color swatches */
+.annotation-color-swatches {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.annotation-color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.annotation-color-swatch:hover {
+  border-color: #333;
+}
+
 .highlight-preview {
-  background: rgba(255, 255, 0, 0.25);
-  border: 1px dashed #f59e0b;
   pointer-events: none;
 }
 
@@ -623,6 +1120,75 @@ html, body, #root {
     background-color: #1a1a1a;
   }
 
+  .tab-bar {
+    background: #2a2a2a;
+    border-bottom-color: #444;
+  }
+
+  .tab {
+    border-right-color: #444;
+  }
+
+  .tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .tab-active {
+    background: #333;
+    border-bottom-color: #333;
+  }
+
+  .tab-active:hover {
+    background: #333;
+  }
+
+  .tab-unsaved {
+    background: #aaa;
+  }
+
+  .tab-close {
+    color: #888;
+  }
+
+  .tab:hover .tab-close {
+    opacity: 1;
+  }
+
+  .tab-close:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #e8e8e8;
+  }
+
+  .tab-new {
+    color: #888;
+  }
+
+  .tab-new:hover {
+    color: #e8e8e8;
+  }
+
+  .theme-toggle {
+    color: #888;
+  }
+
+  .theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e8e8e8;
+  }
+
+  .tab-context-menu {
+    background: #2a2a2a;
+    border-color: #444;
+  }
+
+  .tab-color-option {
+    color: #e8e8e8;
+  }
+
+  .tab-color-option:hover {
+    background: #3a3a3a;
+  }
+
   .toolbar {
     background: #2a2a2a;
     border-bottom-color: #444;
@@ -686,6 +1252,36 @@ html, body, #root {
 
   .page-gallery {
     background: #1a1a1a;
+  }
+
+  .gallery-add-tile {
+    border-color: #555;
+    color: #888;
+  }
+
+  .gallery-add-tile:hover {
+    border-color: #60a5fa;
+    color: #60a5fa;
+  }
+
+  .thumbnail-selected {
+    border-color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+  }
+
+  .gallery-selection-bar {
+    background: #2a2a2a;
+    border-top-color: #444;
+  }
+
+  .gallery-selection-clear {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .gallery-selection-clear:hover {
+    background: #444;
   }
 
   .thumbnail-sidebar {
@@ -760,6 +1356,65 @@ html, body, #root {
     background: #3a2020;
   }
 
+  .annotation-context-menu {
+    background: #2a2a2a;
+    border-color: #444;
+  }
+
+  .annotation-context-delete {
+    color: #fca5a5;
+  }
+
+  .annotation-context-delete:hover {
+    background: #3a3a3a;
+  }
+
+  .annotation-color-swatches {
+    border-bottom-color: #444;
+  }
+
+  .annotation-color-swatch:hover {
+    border-color: #e8e8e8;
+  }
+
+  .save-dropdown {
+    background: #2a2a2a;
+    border-color: #444;
+  }
+
+  .toolbar .save-dropdown-option {
+    color: #e8e8e8;
+  }
+
+  .toolbar .save-dropdown-option:hover {
+    background: #3a3a3a;
+  }
+
+  .highlight-color-dropdown {
+    background: #2a2a2a;
+    border-color: #444;
+  }
+
+  .toolbar .highlight-color-option {
+    color: #e8e8e8;
+  }
+
+  .toolbar .highlight-color-option:hover {
+    background: #3a3a3a;
+  }
+
+  .toolbar .highlight-color-active {
+    background: #1e3a5f;
+  }
+
+  .highlight-color-dot {
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .highlight-color-swatch {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
   .empty-state button {
     background: #333;
     border-color: #555;
@@ -777,5 +1432,630 @@ html, body, #root {
   .error-banner {
     background: #3a1a1a;
     border-bottom-color: #622;
+  }
+}
+
+/* ── AnnotationLayer (PDF.js form fields) ─────────────────────── */
+.page-container .annotationLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: clip;
+  z-index: 2;
+}
+
+.annotationLayer section {
+  position: absolute;
+  text-align: initial;
+  pointer-events: auto;
+  box-sizing: border-box;
+  transform-origin: 0 0;
+}
+
+.annotationLayer .textWidgetAnnotation input,
+.annotationLayer .textWidgetAnnotation textarea,
+.annotationLayer .choiceWidgetAnnotation select {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  padding: 1px 2px;
+  font-size: inherit;
+  font-family: inherit;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+.annotationLayer .textWidgetAnnotation input:focus,
+.annotationLayer .textWidgetAnnotation textarea:focus,
+.annotationLayer .choiceWidgetAnnotation select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+.annotationLayer .buttonWidgetAnnotation.checkBox input,
+.annotationLayer .buttonWidgetAnnotation.radioButton input {
+  appearance: auto;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.annotationLayer .linkAnnotation > a {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+.annotationLayer .popupAnnotation {
+  display: none;
+}
+
+/* ── Signature stamp ────────────────────────────────────────────── */
+.signature-stamp {
+  z-index: 11;
+}
+
+.signature-stamp:hover {
+  outline: 2px solid #2563eb;
+  outline-offset: -1px;
+}
+
+.signature-resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #2563eb;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.signature-stamp:hover .signature-resize-handle {
+  opacity: 1;
+}
+
+.signature-resize-tl { top: -4px; left: -4px; cursor: nwse-resize; }
+.signature-resize-tr { top: -4px; right: -4px; cursor: nesw-resize; }
+.signature-resize-bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.signature-resize-br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+.signature-preview {
+  opacity: 0.5;
+  border: 1px dashed #2563eb;
+  object-fit: fill;
+}
+
+/* ── Save dialog ────────────────────────────────────────────────── */
+.save-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+
+.save-dialog {
+  background: #fff;
+  color: #1a1a1a;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  width: 380px;
+  overflow: hidden;
+}
+
+.save-dialog-body {
+  padding: 24px 24px 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.save-dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 24px 20px;
+}
+
+.save-dialog-btn {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  background: #f5f5f5;
+  color: #333;
+  text-align: center;
+}
+
+.save-dialog-btn:hover {
+  background: #e8e8e8;
+}
+
+.save-dialog-discard {
+  color: #dc2626;
+  border-color: #dc2626;
+  background: transparent;
+}
+
+.save-dialog-discard:hover {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.save-dialog-save {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.save-dialog-save:hover {
+  background: #1d4ed8;
+}
+
+/* ── Signature modal ────────────────────────────────────────────── */
+.signature-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.signature-modal {
+  background: #fff;
+  color: #1a1a1a;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  width: 540px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.signature-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #ddd;
+}
+
+.signature-modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.signature-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  color: #888;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.signature-modal-close:hover {
+  background: #e8e8e8;
+  color: #333;
+}
+
+.signature-kind-toggle {
+  display: flex;
+  gap: 0;
+  padding: 12px 20px 0;
+}
+
+.signature-kind-toggle button {
+  flex: 1;
+  padding: 6px 16px;
+  border: 1px solid #ccc;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 13px;
+  color: #555;
+  transition: background 0.15s, color 0.15s;
+}
+
+.signature-kind-toggle button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.signature-kind-toggle button:last-child {
+  border-radius: 0 6px 6px 0;
+  border-left: none;
+}
+
+.signature-kind-toggle .kind-active {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.signature-initials-preview {
+  padding: 4px 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.signature-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 20px 0;
+}
+
+.signature-tabs button {
+  padding: 6px 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px 6px 0 0;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.signature-tabs button:hover {
+  background: #e8e8e8;
+}
+
+.signature-tabs .signature-tab-active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+
+.signature-modal-body {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Draw tab */
+.signature-canvas {
+  width: 100%;
+  height: 200px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  cursor: crosshair;
+  background: #fff;
+  display: block;
+}
+
+.signature-draw-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.signature-draw-actions button {
+  padding: 4px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.signature-draw-actions button:hover:not(:disabled) {
+  background: #e8e8e8;
+}
+
+.signature-draw-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Type tab */
+.signature-type-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 16px;
+  outline: none;
+  margin-bottom: 12px;
+}
+
+.signature-type-input:focus {
+  border-color: #2563eb;
+}
+
+.signature-font-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signature-font-picker button {
+  padding: 10px 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  color: #1a1a1a;
+  cursor: pointer;
+  font-size: 28px;
+  text-align: left;
+}
+
+.signature-font-picker button:hover {
+  border-color: #2563eb;
+}
+
+.signature-font-picker .signature-font-active {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.05);
+}
+
+/* Saved tab */
+.signature-saved-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.signature-saved-item {
+  position: relative;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #fff;
+}
+
+.signature-saved-item img {
+  width: 100%;
+  height: 80px;
+  object-fit: contain;
+  display: block;
+  padding: 8px;
+}
+
+.signature-saved-item:hover {
+  border-color: #2563eb;
+}
+
+.signature-saved-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: center;
+  cursor: pointer;
+  display: none;
+  padding: 0;
+}
+
+.signature-saved-item:hover .signature-saved-delete {
+  display: block;
+}
+
+.signature-saved-delete:hover {
+  background: #dc2626;
+}
+
+.signature-saved-empty {
+  text-align: center;
+  color: #888;
+  padding: 20px;
+}
+
+/* Modal footer */
+.signature-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid #ddd;
+}
+
+.signature-btn-primary {
+  padding: 6px 20px;
+  border: 1px solid #1d4ed8;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.signature-btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.signature-btn-secondary {
+  padding: 6px 20px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.signature-btn-secondary:hover {
+  background: #e8e8e8;
+}
+
+/* ── Dark mode: AnnotationLayer + Signature ──────────────────── */
+@media (prefers-color-scheme: dark) {
+  /* AnnotationLayer form fields */
+  .annotationLayer .textWidgetAnnotation input,
+  .annotationLayer .textWidgetAnnotation textarea,
+  .annotationLayer .choiceWidgetAnnotation select {
+    background: #333;
+    color: #e8e8e8;
+    border-color: #555;
+  }
+
+  /* Signature modal */
+  .signature-modal {
+    background: #2a2a2a;
+    color: #e8e8e8;
+  }
+
+  .signature-modal-header {
+    border-bottom-color: #444;
+  }
+
+  .signature-modal-close {
+    color: #888;
+  }
+
+  .signature-modal-close:hover {
+    background: #444;
+    color: #e8e8e8;
+  }
+
+  .signature-kind-toggle button {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .signature-kind-toggle .kind-active {
+    background: #2563eb;
+    border-color: #1d4ed8;
+    color: #fff;
+  }
+
+  .signature-initials-preview {
+    color: #aaa;
+  }
+
+  .signature-tabs button {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .signature-tabs button:hover {
+    background: #444;
+  }
+
+  .signature-tabs .signature-tab-active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #1d4ed8;
+  }
+
+  .signature-canvas {
+    background: #f5f5f5;
+    border-color: #555;
+  }
+
+  .signature-draw-actions button {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .signature-draw-actions button:hover:not(:disabled) {
+    background: #444;
+  }
+
+  .signature-type-input {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .signature-font-picker button {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .signature-font-picker button:hover {
+    border-color: #60a5fa;
+    background: #3a3a3a;
+  }
+
+  .signature-font-picker .signature-font-active {
+    border-color: #2563eb;
+    background: rgba(37, 99, 235, 0.15);
+  }
+
+  .signature-saved-item {
+    background: #333;
+    border-color: #555;
+  }
+
+  .signature-saved-item:hover {
+    border-color: #60a5fa;
+  }
+
+  .signature-saved-empty {
+    color: #888;
+  }
+
+  .signature-modal-footer {
+    border-top-color: #444;
+  }
+
+  .signature-btn-secondary {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .signature-btn-secondary:hover {
+    background: #444;
+  }
+
+  .save-dialog {
+    background: #2a2a2a;
+    color: #e8e8e8;
+  }
+
+  .save-dialog-btn {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .save-dialog-btn:hover {
+    background: #444;
+  }
+
+  .save-dialog-discard {
+    color: #fca5a5;
+    border-color: #dc2626;
+    background: transparent;
+  }
+
+  .save-dialog-discard:hover {
+    background: rgba(220, 38, 38, 0.15);
+  }
+
+  .save-dialog-save {
+    background: #2563eb;
+    border-color: #1d4ed8;
+    color: #fff;
+  }
+
+  .save-dialog-save:hover {
+    background: #1d4ed8;
   }
 }

@@ -1,17 +1,17 @@
-import { useCallback, useRef } from "react";
-import type { HighlightAnnotation, PageDimension } from "../types";
+import { useRef, useCallback } from "react";
+import type { SignatureAnnotation, PageDimension } from "../types";
 
-interface HighlightRectProps {
-  annotation: HighlightAnnotation;
+interface SignatureStampProps {
+  annotation: SignatureAnnotation;
   dimension: PageDimension;
   zoom: number;
   selected: boolean;
   onSelect: () => void;
-  onUpdate: (updates: Partial<HighlightAnnotation>) => void;
+  onUpdate: (updates: Partial<SignatureAnnotation>) => void;
   onContextMenu: (x: number, y: number) => void;
 }
 
-export function HighlightRect({
+export function SignatureStamp({
   annotation,
   dimension,
   zoom,
@@ -19,7 +19,8 @@ export function HighlightRect({
   onSelect,
   onUpdate,
   onContextMenu,
-}: HighlightRectProps) {
+}: SignatureStampProps) {
+  const aspectRatio = useRef(annotation.width / annotation.height);
   const didDragRef = useRef(false);
 
   const left = annotation.x * dimension.width * zoom;
@@ -31,25 +32,28 @@ export function HighlightRect({
     (e: React.MouseEvent, corner: string) => {
       e.preventDefault();
       e.stopPropagation();
-
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startW = width;
-      const startH = height;
+      aspectRatio.current = annotation.width / annotation.height;
 
       const handleMouseMove = (ev: MouseEvent) => {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
+        const dx = ev.clientX - e.clientX;
+        const dy = ev.clientY - e.clientY;
         const pageW = dimension.width * zoom;
         const pageH = dimension.height * zoom;
 
-        let newW = startW;
-        let newH = startH;
+        let newW = width;
+        let newH = height;
 
-        if (corner.includes("r")) newW = Math.max(10, startW + dx);
-        if (corner.includes("l")) newW = Math.max(10, startW - dx);
-        if (corner.includes("b")) newH = Math.max(10, startH + dy);
-        if (corner.includes("t")) newH = Math.max(10, startH - dy);
+        if (corner.includes("r")) newW = Math.max(40, width + dx);
+        if (corner.includes("l")) newW = Math.max(40, width - dx);
+        if (corner.includes("b")) newH = Math.max(20, height + dy);
+        if (corner.includes("t")) newH = Math.max(20, height - dy);
+
+        // Proportional resize by default, free with Shift
+        if (!ev.shiftKey) {
+          const scale = Math.max(newW / width, newH / height);
+          newW = width * scale;
+          newH = height * scale;
+        }
 
         const normW = newW / pageW;
         const normH = newH / pageH;
@@ -75,7 +79,7 @@ export function HighlightRect({
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
-      if ((e.target as HTMLElement).classList.contains("highlight-resize-handle")) return;
+      if ((e.target as HTMLElement).classList.contains("signature-resize-handle")) return;
       e.preventDefault();
       e.stopPropagation();
       onSelect();
@@ -111,16 +115,13 @@ export function HighlightRect({
 
   return (
     <div
-      className={`highlight-annotation${selected ? " annotation-selected" : ""}`}
+      className={`signature-stamp${selected ? " annotation-selected" : ""}`}
       style={{
         position: "absolute",
         left,
         top,
         width,
         height,
-        backgroundColor: annotation.color,
-        mixBlendMode: "multiply",
-        opacity: 0.35,
         pointerEvents: "auto",
         cursor: "move",
       }}
@@ -135,14 +136,25 @@ export function HighlightRect({
         onContextMenu(e.clientX, e.clientY);
       }}
     >
-      {selected &&
-        ["tl", "tr", "bl", "br"].map((corner) => (
-          <div
-            key={corner}
-            className={`highlight-resize-handle highlight-resize-${corner}`}
-            onMouseDown={(e) => handleResizeStart(e, corner)}
-          />
-        ))}
+      <img
+        src={annotation.imageData}
+        alt="Signature"
+        draggable={false}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "fill",
+          display: "block",
+        }}
+      />
+      {/* Resize handles */}
+      {["tl", "tr", "bl", "br"].map((corner) => (
+        <div
+          key={corner}
+          className={`signature-resize-handle signature-resize-${corner}`}
+          onMouseDown={(e) => handleResizeStart(e, corner)}
+        />
+      ))}
     </div>
   );
 }

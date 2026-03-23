@@ -12,6 +12,7 @@ export function useTextSearch(pdfDoc: PDFDocumentProxy | null) {
   const [searching, setSearching] = useState(false);
   const [currentQuery, setCurrentQuery] = useState("");
   const searchIdRef = useRef(0);
+  const lastQueryRef = useRef("");
 
   const search = useCallback(async (query: string) => {
     if (!query.trim() || !pdfDoc) {
@@ -19,8 +20,13 @@ export function useTextSearch(pdfDoc: PDFDocumentProxy | null) {
       setCurrentMatchIndex(-1);
       setSearching(false);
       setCurrentQuery("");
+      lastQueryRef.current = "";
       return;
     }
+
+    // Same query already searched — skip re-search
+    if (query === lastQueryRef.current) return;
+    lastQueryRef.current = query;
 
     const id = ++searchIdRef.current;
     setSearching(true);
@@ -72,6 +78,7 @@ export function useTextSearch(pdfDoc: PDFDocumentProxy | null) {
     setCurrentMatchIndex(-1);
     setSearching(false);
     setCurrentQuery("");
+    lastQueryRef.current = "";
   }, []);
 
   const currentMatch = currentMatchIndex >= 0 ? matches[currentMatchIndex] : null;

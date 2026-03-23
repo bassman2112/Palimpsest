@@ -1,6 +1,7 @@
 use base64::Engine;
-use lopdf::{Document, Object, Dictionary, StringFormat};
+use lopdf::{Document, Object, Dictionary, ObjectId, StringFormat};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
@@ -120,6 +121,43 @@ fn obj_to_f64(obj: &Object) -> Result<f64, String> {
     }
 }
 
+const PALIMPSEST_MARKER: &[u8] = b"palimpsest";
+
+/// Check if an annotation dict was created by Palimpsest (has our NM marker)
+fn is_palimpsest_annotation(doc: &Document, annot_obj: &Object) -> bool {
+    let dict = match annot_obj {
+        Object::Dictionary(d) => d,
+        Object::Reference(id) => {
+            match doc.get_object(*id) {
+                Ok(Object::Dictionary(d)) => d,
+                _ => return false,
+            }
+        }
+        _ => return false,
+    };
+    match dict.get(b"NM") {
+        Ok(Object::String(bytes, _)) => bytes.starts_with(PALIMPSEST_MARKER),
+        _ => false,
+    }
+}
+
+/// Get existing Annots array entries for a page, resolving indirect references
+fn get_existing_annots(doc: &Document, page_id: ObjectId) -> Vec<Object> {
+    let page_dict = match doc.get_object(page_id)
+        .and_then(|o| o.as_dict().map(|d| d.clone())) {
+        Ok(d) => d,
+        Err(_) => return vec![],
+    };
+    let annots_obj = match page_dict.get(b"Annots") {
+        Ok(obj) => obj.clone(),
+        Err(_) => return vec![],
+    };
+    match resolve_object(doc, &annots_obj) {
+        Ok(Object::Array(arr)) => arr,
+        _ => vec![],
+    }
+}
+
 #[tauri::command]
 fn save_annotations(path: String, annotations: Vec<AnnotationData>) -> Result<(), String> {
     let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
@@ -132,8 +170,20 @@ fn save_annotations(path: String, annotations: Vec<AnnotationData>) -> Result<()
             .filter(|a| a.page_number == *page_num as usize)
             .collect();
 
-        if page_annots.is_empty() {
-            // Remove existing annotations for this page
+        // Collect existing non-palimpsest annotations to preserve (form widgets, links, etc.)
+        let existing = get_existing_annots(&doc, *page_id);
+        let mut preserved_refs: Vec<Object> = Vec::new();
+        for entry in &existing {
+            let resolved = match resolve_object(&doc, entry) {
+                Ok(obj) => obj,
+                Err(_) => continue,
+            };
+            if !is_palimpsest_annotation(&doc, &resolved) {
+                preserved_refs.push(entry.clone());
+            }
+        }
+
+        if page_annots.is_empty() && preserved_refs.is_empty() {
             if let Ok(page_obj) = doc.get_object_mut(*page_id) {
                 if let Ok(dict) = page_obj.as_dict_mut() {
                     dict.remove(b"Annots");
@@ -146,15 +196,14 @@ fn save_annotations(path: String, annotations: Vec<AnnotationData>) -> Result<()
         let page_w = x1 - x0;
         let page_h = y1 - y0;
 
-        let mut annot_refs = Vec::new();
+        let mut annot_refs = preserved_refs;
 
         for ann in &page_annots {
-            let annot_dict = if ann.annotation_type == "highlight" {
-                // Convert normalized coords to PDF space (flip Y)
+            let mut annot_dict = if ann.annotation_type == "highlight" {
                 let pdf_x = x0 + ann.x * page_w;
-                let pdf_y2 = y1 - ann.y * page_h; // top in PDF space
+                let pdf_y2 = y1 - ann.y * page_h;
                 let pdf_x2 = x0 + (ann.x + ann.width) * page_w;
-                let pdf_y = y1 - (ann.y + ann.height) * page_h; // bottom in PDF space
+                let pdf_y = y1 - (ann.y + ann.height) * page_h;
 
                 let rect = vec![
                     Object::Real(pdf_x as f32),
@@ -163,7 +212,6 @@ fn save_annotations(path: String, annotations: Vec<AnnotationData>) -> Result<()
                     Object::Real(pdf_y2 as f32),
                 ];
 
-                // QuadPoints: 4 corners in order: LL, LR, UL, UR (some readers expect UL, UR, LL, LR)
                 let quad_points = vec![
                     Object::Real(pdf_x as f32),
                     Object::Real(pdf_y2 as f32),
@@ -187,10 +235,9 @@ fn save_annotations(path: String, annotations: Vec<AnnotationData>) -> Result<()
                 dict.set("Rect", Object::Array(rect));
                 dict.set("QuadPoints", Object::Array(quad_points));
                 dict.set("C", Object::Array(color));
-                dict.set("F", Object::Integer(4)); // Print flag
+                dict.set("F", Object::Integer(4));
                 dict
             } else {
-                // Sticky note
                 let pdf_x = x0 + ann.x * page_w;
                 let pdf_y = y1 - ann.y * page_h;
 
@@ -219,11 +266,16 @@ fn save_annotations(path: String, annotations: Vec<AnnotationData>) -> Result<()
                 dict
             };
 
+            // Tag with Palimpsest marker so we can identify our annotations later
+            annot_dict.set("NM", Object::String(
+                PALIMPSEST_MARKER.to_vec(),
+                StringFormat::Literal,
+            ));
+
             let annot_id = doc.add_object(Object::Dictionary(annot_dict));
             annot_refs.push(Object::Reference(annot_id));
         }
 
-        // Set the Annots array on the page
         if let Ok(page_obj) = doc.get_object_mut(*page_id) {
             if let Ok(dict) = page_obj.as_dict_mut() {
                 dict.set("Annots", Object::Array(annot_refs));
@@ -427,6 +479,220 @@ fn save_pdf_as(source: String, dest: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Save a "locked" copy of the PDF: flatten palimpsest annotations into page
+/// content streams so they become non-editable, then remove the annotations.
+#[tauri::command]
+fn save_locked(source: String, dest: String) -> Result<(), String> {
+    use lopdf::Stream;
+
+    // Copy source to dest first, then work on dest
+    std::fs::copy(&source, &dest)
+        .map_err(|e| format!("Failed to copy: {}", e))?;
+
+    let mut doc = Document::load(&dest).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+
+    for (_page_num, page_id) in &pages {
+        let existing_annots = get_existing_annots(&doc, *page_id);
+        if existing_annots.is_empty() {
+            continue;
+        }
+
+        let mut extra_content = String::new();
+        let mut extra_xobjects: Vec<(String, ObjectId)> = Vec::new();
+        let mut non_palimpsest: Vec<Object> = Vec::new();
+        let mut sig_counter = 0u32;
+
+        for annot_ref in &existing_annots {
+            let annot_obj = match resolve_object(&doc, annot_ref) {
+                Ok(obj) => obj,
+                Err(_) => {
+                    non_palimpsest.push(annot_ref.clone());
+                    continue;
+                }
+            };
+
+            if !is_palimpsest_annotation(&doc, &annot_obj) {
+                non_palimpsest.push(annot_ref.clone());
+                continue;
+            }
+
+            let annot_dict = match &annot_obj {
+                Object::Dictionary(d) => d,
+                _ => continue,
+            };
+
+            let subtype = annot_dict.get(b"Subtype")
+                .ok()
+                .and_then(|o| match o {
+                    Object::Name(n) => Some(n.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            if subtype == b"Highlight" {
+                // Flatten highlight: draw a semi-transparent colored rectangle
+                let rect = annot_dict.get(b"Rect")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) => parse_rect(arr).ok(),
+                        _ => None,
+                    });
+                let color = annot_dict.get(b"C")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) if arr.len() >= 3 => {
+                            let r = obj_to_f64(&arr[0]).unwrap_or(1.0);
+                            let g = obj_to_f64(&arr[1]).unwrap_or(1.0);
+                            let b = obj_to_f64(&arr[2]).unwrap_or(0.0);
+                            Some((r, g, b))
+                        }
+                        _ => None,
+                    });
+
+                if let (Some((rx, ry, rx2, ry2)), Some((r, g, b))) = (rect, color) {
+                    // Create a transparency ExtGState
+                    let mut gs_dict = Dictionary::new();
+                    gs_dict.set("Type", Object::Name(b"ExtGState".to_vec()));
+                    gs_dict.set("ca", Object::Real(0.35)); // fill opacity
+                    gs_dict.set("BM", Object::Name(b"Multiply".to_vec()));
+                    let gs_id = doc.add_object(Object::Dictionary(gs_dict));
+                    let gs_name = format!("PGS{}", sig_counter);
+                    sig_counter += 1;
+
+                    // Add GState to page resources
+                    add_page_ext_gstate(&mut doc, *page_id, &gs_name, gs_id);
+
+                    let w = rx2 - rx;
+                    let h = ry2 - ry;
+                    extra_content.push_str(&format!(
+                        "q /{} gs {} {} {} rg {} {} {} {} re f Q\n",
+                        gs_name, r, g, b, rx, ry, w, h
+                    ));
+                }
+            } else if subtype == b"Stamp" {
+                // Flatten stamp (signature): draw the appearance stream into page content
+                let ap = annot_dict.get(b"AP")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Dictionary(d) => Some(d.clone()),
+                        _ => None,
+                    });
+                let ap_ref = ap.and_then(|d| {
+                    d.get(b"N").ok().and_then(|o| match o {
+                        Object::Reference(id) => Some(*id),
+                        _ => None,
+                    })
+                });
+
+                let rect = annot_dict.get(b"Rect")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) => parse_rect(arr).ok(),
+                        _ => None,
+                    });
+
+                if let (Some(form_id), Some((rx, ry, rx2, ry2))) = (ap_ref, rect) {
+                    let xobj_name = format!("PSig{}", sig_counter);
+                    sig_counter += 1;
+
+                    let w = rx2 - rx;
+                    let h = ry2 - ry;
+                    // Draw the form XObject at the annotation's position
+                    extra_content.push_str(&format!(
+                        "q {} 0 0 {} {} {} cm /{} Do Q\n",
+                        w, h, rx, ry, xobj_name
+                    ));
+                    extra_xobjects.push((xobj_name, form_id));
+                }
+            }
+            // Text (sticky note) annotations are simply removed — no visual to flatten
+        }
+
+        // Append extra content to page content stream
+        if !extra_content.is_empty() {
+            let extra_stream_dict = Dictionary::new();
+            let extra_stream = Stream::new(extra_stream_dict, extra_content.into_bytes());
+            let extra_id = doc.add_object(Object::Stream(extra_stream));
+
+            // Get existing Contents and make it an array with our extra stream appended
+            if let Ok(page_obj) = doc.get_object(*page_id) {
+                let page_dict = page_obj.as_dict().map(|d| d.clone()).ok();
+                if let Some(pd) = page_dict {
+                    let mut contents_arr = match pd.get(b"Contents") {
+                        Ok(Object::Array(arr)) => arr.clone(),
+                        Ok(Object::Reference(id)) => vec![Object::Reference(*id)],
+                        _ => vec![],
+                    };
+                    contents_arr.push(Object::Reference(extra_id));
+                    if let Ok(page_obj_mut) = doc.get_object_mut(*page_id) {
+                        if let Ok(dict) = page_obj_mut.as_dict_mut() {
+                            dict.set("Contents", Object::Array(contents_arr));
+                        }
+                    }
+                }
+            }
+
+            // Add XObject references to page resources
+            for (name, obj_id) in &extra_xobjects {
+                add_page_xobject(&mut doc, *page_id, name, *obj_id);
+            }
+        }
+
+        // Update Annots: keep only non-palimpsest annotations
+        if let Ok(page_obj) = doc.get_object_mut(*page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                if non_palimpsest.is_empty() {
+                    dict.remove(b"Annots");
+                } else {
+                    dict.set("Annots", Object::Array(non_palimpsest));
+                }
+            }
+        }
+    }
+
+    doc.save(&dest).map_err(|e| format!("Failed to save locked PDF: {}", e))?;
+    Ok(())
+}
+
+/// Add an ExtGState entry to a page's Resources/ExtGState dictionary
+fn add_page_ext_gstate(doc: &mut Document, page_id: ObjectId, name: &str, gs_id: ObjectId) {
+    if let Ok(page_obj) = doc.get_object_mut(page_id) {
+        if let Ok(dict) = page_obj.as_dict_mut() {
+            let mut resources = match dict.get(b"Resources") {
+                Ok(Object::Dictionary(d)) => d.clone(),
+                _ => Dictionary::new(),
+            };
+            let mut ext_gstate = match resources.get(b"ExtGState") {
+                Ok(Object::Dictionary(d)) => d.clone(),
+                _ => Dictionary::new(),
+            };
+            ext_gstate.set(name.as_bytes(), Object::Reference(gs_id));
+            resources.set("ExtGState", Object::Dictionary(ext_gstate));
+            dict.set("Resources", Object::Dictionary(resources));
+        }
+    }
+}
+
+/// Add an XObject entry to a page's Resources/XObject dictionary
+fn add_page_xobject(doc: &mut Document, page_id: ObjectId, name: &str, obj_id: ObjectId) {
+    if let Ok(page_obj) = doc.get_object_mut(page_id) {
+        if let Ok(dict) = page_obj.as_dict_mut() {
+            let mut resources = match dict.get(b"Resources") {
+                Ok(Object::Dictionary(d)) => d.clone(),
+                _ => Dictionary::new(),
+            };
+            let mut xobjects = match resources.get(b"XObject") {
+                Ok(Object::Dictionary(d)) => d.clone(),
+                _ => Dictionary::new(),
+            };
+            xobjects.set(name.as_bytes(), Object::Reference(obj_id));
+            resources.set("XObject", Object::Dictionary(xobjects));
+            dict.set("Resources", Object::Dictionary(resources));
+        }
+    }
+}
+
 #[tauri::command]
 fn update_recent_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
     // Store paths in managed state so on_menu_event can look them up
@@ -523,6 +789,461 @@ fn delete_pages(path: String, page_numbers: Vec<u32>) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Deserialize)]
+struct MergePageSpec {
+    path: String,
+    page_number: u32, // 1-indexed
+}
+
+/// BFS to collect all ObjectIds reachable from `start_id`, skipping `/Parent` keys.
+fn collect_reachable(doc: &Document, start_id: ObjectId) -> Vec<ObjectId> {
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::new();
+    visited.insert(start_id);
+    queue.push_back(start_id);
+
+    while let Some(oid) = queue.pop_front() {
+        if let Ok(obj) = doc.get_object(oid) {
+            collect_refs_from_object(obj, b"", &mut visited, &mut queue);
+        }
+    }
+
+    visited.into_iter().collect()
+}
+
+fn collect_refs_from_object(
+    obj: &Object,
+    key: &[u8],
+    visited: &mut HashSet<ObjectId>,
+    queue: &mut VecDeque<ObjectId>,
+) {
+    match obj {
+        Object::Reference(id) => {
+            // Skip Parent references to avoid importing the entire page tree
+            if key != b"Parent" && visited.insert(*id) {
+                queue.push_back(*id);
+            }
+        }
+        Object::Array(arr) => {
+            for item in arr {
+                collect_refs_from_object(item, b"", visited, queue);
+            }
+        }
+        Object::Dictionary(dict) => {
+            for (k, v) in dict.iter() {
+                collect_refs_from_object(v, k, visited, queue);
+            }
+        }
+        Object::Stream(stream) => {
+            for (k, v) in stream.dict.iter() {
+                collect_refs_from_object(v, k, visited, queue);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Recursively rewrite all Object::Reference(old) → Object::Reference(new) using the mapping.
+fn remap_references(obj: &mut Object, map: &HashMap<ObjectId, ObjectId>) {
+    match obj {
+        Object::Reference(id) => {
+            if let Some(new_id) = map.get(id) {
+                *id = *new_id;
+            }
+        }
+        Object::Array(arr) => {
+            for item in arr.iter_mut() {
+                remap_references(item, map);
+            }
+        }
+        Object::Dictionary(dict) => {
+            for (_k, v) in dict.iter_mut() {
+                remap_references(v, map);
+            }
+        }
+        Object::Stream(stream) => {
+            for (_k, v) in stream.dict.iter_mut() {
+                remap_references(v, map);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Deep-copy a page and all its reachable objects from source into target.
+/// Returns the new ObjectId of the page in target.
+fn import_page(
+    target: &mut Document,
+    source: &Document,
+    page_id: ObjectId,
+    target_pages_id: ObjectId,
+) -> Result<ObjectId, String> {
+    let reachable = collect_reachable(source, page_id);
+
+    // Deep-copy each reachable object into target, building old→new mapping
+    let mut id_map: HashMap<ObjectId, ObjectId> = HashMap::new();
+    for &oid in &reachable {
+        let obj = source
+            .get_object(oid)
+            .map_err(|e| format!("Failed to get object {:?}: {}", oid, e))?
+            .clone();
+        let new_id = target.add_object(obj);
+        id_map.insert(oid, new_id);
+    }
+
+    // Remap all references in copied objects
+    for new_id in id_map.values() {
+        if let Ok(obj) = target.get_object_mut(*new_id) {
+            remap_references(obj, &id_map);
+        }
+    }
+
+    // Fix the new page's /Parent to point to target's Pages node
+    let new_page_id = *id_map
+        .get(&page_id)
+        .ok_or("Page not found in id_map")?;
+    if let Ok(obj) = target.get_object_mut(new_page_id) {
+        if let Ok(dict) = obj.as_dict_mut() {
+            dict.set("Parent", Object::Reference(target_pages_id));
+        }
+    }
+
+    Ok(new_page_id)
+}
+
+#[tauri::command]
+fn merge_pdfs(pages: Vec<MergePageSpec>, dest: String) -> Result<(), String> {
+    if pages.is_empty() {
+        return Err("No pages to merge".into());
+    }
+
+    // Deduplicate source paths → load each document once
+    let mut source_docs: HashMap<String, Document> = HashMap::new();
+    for spec in &pages {
+        if !source_docs.contains_key(&spec.path) {
+            let doc = Document::load(&spec.path)
+                .map_err(|e| format!("Failed to load {}: {}", spec.path, e))?;
+            source_docs.insert(spec.path.clone(), doc);
+        }
+    }
+
+    // Create target document
+    let mut target = Document::with_version("1.7");
+
+    // Create Pages node
+    let pages_dict = Dictionary::from_iter(vec![
+        ("Type", Object::Name(b"Pages".to_vec())),
+        ("Kids", Object::Array(vec![])),
+        ("Count", Object::Integer(0)),
+    ]);
+    let pages_id = target.add_object(Object::Dictionary(pages_dict));
+
+    // Create Catalog
+    let catalog_dict = Dictionary::from_iter(vec![
+        ("Type", Object::Name(b"Catalog".to_vec())),
+        ("Pages", Object::Reference(pages_id)),
+    ]);
+    let catalog_id = target.add_object(Object::Dictionary(catalog_dict));
+    target.trailer.set("Root", Object::Reference(catalog_id));
+
+    // Import each page in order
+    let mut kids: Vec<Object> = Vec::new();
+    for spec in &pages {
+        let source = source_docs
+            .get(&spec.path)
+            .ok_or_else(|| format!("Source not loaded: {}", spec.path))?;
+
+        // Find the page's ObjectId by page number
+        let source_pages = source.get_pages();
+        let page_obj_id = source_pages
+            .get(&spec.page_number)
+            .ok_or_else(|| {
+                format!(
+                    "Page {} not found in {} (has {} pages)",
+                    spec.page_number,
+                    spec.path,
+                    source_pages.len()
+                )
+            })?;
+
+        let new_page_id = import_page(&mut target, source, *page_obj_id, pages_id)?;
+        kids.push(Object::Reference(new_page_id));
+    }
+
+    // Update Pages node with Kids and Count
+    if let Ok(obj) = target.get_object_mut(pages_id) {
+        if let Ok(dict) = obj.as_dict_mut() {
+            dict.set("Kids", Object::Array(kids.clone()));
+            dict.set("Count", Object::Integer(kids.len() as i64));
+        }
+    }
+
+    target.renumber_objects();
+    target.compress();
+    target
+        .save(&dest)
+        .map_err(|e| format!("Failed to save merged PDF: {}", e))?;
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct FormFieldUpdate {
+    field_name: String,
+    value: String,
+    field_type: String, // "text", "checkbox", "radio", "choice"
+}
+
+#[tauri::command]
+fn save_form_fields(path: String, fields: Vec<FormFieldUpdate>) -> Result<(), String> {
+    if fields.is_empty() {
+        return Ok(());
+    }
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+
+    // Build a map of field_name -> update for quick lookup
+    let field_map: HashMap<String, &FormFieldUpdate> = fields.iter()
+        .map(|f| (f.field_name.clone(), f))
+        .collect();
+
+    // Walk all pages and their annotations to find Widget annotations with matching field names
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+    let mut updates: Vec<(ObjectId, String, String)> = Vec::new(); // (obj_id, value, field_type)
+
+    for (_page_num, page_id) in &pages {
+        let existing = get_existing_annots(&doc, *page_id);
+        for entry in &existing {
+            let obj_id = match entry {
+                Object::Reference(id) => *id,
+                _ => continue,
+            };
+            let annot_obj = match doc.get_object(obj_id) {
+                Ok(obj) => obj.clone(),
+                Err(_) => continue,
+            };
+            let annot_dict = match &annot_obj {
+                Object::Dictionary(d) => d,
+                _ => continue,
+            };
+
+            // Check if this is a Widget annotation
+            let subtype = match annot_dict.get(b"Subtype") {
+                Ok(Object::Name(name)) => String::from_utf8_lossy(name).to_string(),
+                _ => continue,
+            };
+            if subtype != "Widget" {
+                continue;
+            }
+
+            // Get field name from /T key
+            let field_name = match annot_dict.get(b"T") {
+                Ok(Object::String(bytes, _)) => String::from_utf8_lossy(bytes).to_string(),
+                _ => continue,
+            };
+
+            if let Some(update) = field_map.get(&field_name) {
+                updates.push((obj_id, update.value.clone(), update.field_type.clone()));
+            }
+        }
+    }
+
+    // Also walk AcroForm Fields array if present
+    let catalog = doc.catalog().map_err(|e| format!("No catalog: {}", e))?.clone();
+    if let Ok(acroform_ref) = catalog.get(b"AcroForm") {
+        if let Ok(acroform_obj) = resolve_object(&doc, acroform_ref) {
+            if let Object::Dictionary(acroform_dict) = acroform_obj {
+                if let Ok(fields_obj) = acroform_dict.get(b"Fields") {
+                    if let Ok(Object::Array(field_refs)) = resolve_object(&doc, fields_obj) {
+                        for field_ref in &field_refs {
+                            let obj_id = match field_ref {
+                                Object::Reference(id) => *id,
+                                _ => continue,
+                            };
+                            // Skip if already in updates
+                            if updates.iter().any(|(id, _, _)| *id == obj_id) {
+                                continue;
+                            }
+                            let field_obj = match doc.get_object(obj_id) {
+                                Ok(obj) => obj.clone(),
+                                Err(_) => continue,
+                            };
+                            let field_dict = match &field_obj {
+                                Object::Dictionary(d) => d,
+                                _ => continue,
+                            };
+                            let field_name = match field_dict.get(b"T") {
+                                Ok(Object::String(bytes, _)) => String::from_utf8_lossy(bytes).to_string(),
+                                _ => continue,
+                            };
+                            if let Some(update) = field_map.get(&field_name) {
+                                updates.push((obj_id, update.value.clone(), update.field_type.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply updates
+    for (obj_id, value, field_type) in updates {
+        if let Ok(obj) = doc.get_object_mut(obj_id) {
+            if let Ok(dict) = obj.as_dict_mut() {
+                match field_type.as_str() {
+                    "checkbox" => {
+                        let val = if value == "true" || value == "Yes" {
+                            Object::Name(b"Yes".to_vec())
+                        } else {
+                            Object::Name(b"Off".to_vec())
+                        };
+                        dict.set("V", val.clone());
+                        dict.set("AS", val);
+                    }
+                    "radio" => {
+                        dict.set("V", Object::Name(value.as_bytes().to_vec()));
+                        dict.set("AS", Object::Name(value.as_bytes().to_vec()));
+                    }
+                    _ => {
+                        // text, choice
+                        dict.set("V", Object::String(value.as_bytes().to_vec(), StringFormat::Literal));
+                    }
+                }
+            }
+        }
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct SignatureImageData {
+    page_number: usize,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    image_base64: String, // JPEG data (no data URL prefix)
+}
+
+#[tauri::command]
+fn embed_signatures(path: String, signatures: Vec<SignatureImageData>) -> Result<(), String> {
+    use lopdf::Stream;
+
+    if signatures.is_empty() {
+        return Ok(());
+    }
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+
+    for sig in &signatures {
+        let page_entry = pages.iter().find(|(n, _)| *n as usize == sig.page_number);
+        let page_id = match page_entry {
+            Some((_, id)) => *id,
+            None => continue,
+        };
+
+        // Decode base64 → JPEG bytes
+        let jpeg_bytes = base64::engine::general_purpose::STANDARD
+            .decode(&sig.image_base64)
+            .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+        // Read JPEG dimensions using the image crate
+        let reader = image::ImageReader::new(std::io::Cursor::new(&jpeg_bytes))
+            .with_guessed_format()
+            .map_err(|e| format!("Failed to read image format: {}", e))?;
+        let (img_w, img_h) = reader.into_dimensions()
+            .map_err(|e| format!("Failed to read image dimensions: {}", e))?;
+
+        // Create Image XObject
+        let mut img_dict = Dictionary::new();
+        img_dict.set("Type", Object::Name(b"XObject".to_vec()));
+        img_dict.set("Subtype", Object::Name(b"Image".to_vec()));
+        img_dict.set("Width", Object::Integer(img_w as i64));
+        img_dict.set("Height", Object::Integer(img_h as i64));
+        img_dict.set("ColorSpace", Object::Name(b"DeviceRGB".to_vec()));
+        img_dict.set("BitsPerComponent", Object::Integer(8));
+        img_dict.set("Filter", Object::Name(b"DCTDecode".to_vec()));
+        img_dict.set("Length", Object::Integer(jpeg_bytes.len() as i64));
+
+        let img_stream = Stream::new(img_dict, jpeg_bytes);
+        let img_id = doc.add_object(Object::Stream(img_stream));
+
+        // Get page media box for coordinate conversion
+        let (x0, y0, x1, y1) = get_page_media_box(&doc, page_id)?;
+        let page_w = x1 - x0;
+        let page_h = y1 - y0;
+
+        // Convert normalized coords to PDF coords
+        let pdf_x = x0 + sig.x * page_w;
+        let pdf_y = y1 - (sig.y + sig.height) * page_h; // bottom in PDF space
+        let pdf_w = sig.width * page_w;
+        let pdf_h = sig.height * page_h;
+
+        // Create Form XObject (appearance stream) that draws the image
+        let ap_content = format!(
+            "q {} 0 0 {} {} {} cm /SigImg Do Q",
+            pdf_w, pdf_h, pdf_x, pdf_y
+        );
+
+        let mut ap_resources_xobject = Dictionary::new();
+        ap_resources_xobject.set("SigImg", Object::Reference(img_id));
+        let mut ap_resources = Dictionary::new();
+        ap_resources.set("XObject", Object::Dictionary(ap_resources_xobject));
+
+        let mut ap_dict = Dictionary::new();
+        ap_dict.set("Type", Object::Name(b"XObject".to_vec()));
+        ap_dict.set("Subtype", Object::Name(b"Form".to_vec()));
+        ap_dict.set("BBox", Object::Array(vec![
+            Object::Real(pdf_x as f32),
+            Object::Real(pdf_y as f32),
+            Object::Real((pdf_x + pdf_w) as f32),
+            Object::Real((pdf_y + pdf_h) as f32),
+        ]));
+        ap_dict.set("Resources", Object::Dictionary(ap_resources));
+        ap_dict.set("Length", Object::Integer(ap_content.len() as i64));
+
+        let ap_stream = Stream::new(ap_dict, ap_content.into_bytes());
+        let ap_id = doc.add_object(Object::Stream(ap_stream));
+
+        // Create Stamp annotation
+        let rect = vec![
+            Object::Real(pdf_x as f32),
+            Object::Real(pdf_y as f32),
+            Object::Real((pdf_x + pdf_w) as f32),
+            Object::Real((pdf_y + pdf_h) as f32),
+        ];
+
+        let mut ap_appearance = Dictionary::new();
+        ap_appearance.set("N", Object::Reference(ap_id));
+
+        let mut stamp_dict = Dictionary::new();
+        stamp_dict.set("Type", Object::Name(b"Annot".to_vec()));
+        stamp_dict.set("Subtype", Object::Name(b"Stamp".to_vec()));
+        stamp_dict.set("Rect", Object::Array(rect));
+        stamp_dict.set("AP", Object::Dictionary(ap_appearance));
+        stamp_dict.set("F", Object::Integer(4)); // Print flag
+        stamp_dict.set("NM", Object::String(
+            PALIMPSEST_MARKER.to_vec(),
+            StringFormat::Literal,
+        ));
+
+        let stamp_id = doc.add_object(Object::Dictionary(stamp_dict));
+
+        // Add to page's Annots array
+        let mut existing_annots = get_existing_annots(&doc, page_id);
+        existing_annots.push(Object::Reference(stamp_id));
+        if let Ok(page_obj) = doc.get_object_mut(page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                dict.set("Annots", Object::Array(existing_annots));
+            }
+        }
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -560,14 +1281,14 @@ pub fn run() {
             let save_item = MenuItem::with_id(app, "save", "Save", true, Some("CmdOrCtrl+S"))?;
             let save_as_item = MenuItem::with_id(app, "save_as", "Save As...", true, Some("CmdOrCtrl+Shift+S"))?;
             let print_item = MenuItem::with_id(app, "print", "Print...", true, Some("CmdOrCtrl+P"))?;
+            let new_tab_item = MenuItem::with_id(app, "new_tab", "New Tab", true, Some("CmdOrCtrl+T"))?;
+            let close_file_item = MenuItem::with_id(app, "close_file", "Close Tab", true, Some("CmdOrCtrl+W"))?;
             let sep1 = PredefinedMenuItem::separator(app)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
             let sep3 = PredefinedMenuItem::separator(app)?;
-            let close_item = PredefinedMenuItem::close_window(app, None)?;
-
             let file_menu = Submenu::with_id_and_items(
                 app, "file", "File", true,
-                &[&open_item, &open_recent, &sep1, &save_item, &save_as_item, &sep2, &print_item, &sep3, &close_item],
+                &[&new_tab_item, &open_item, &open_recent, &sep1, &close_file_item, &sep2, &save_item, &save_as_item, &sep3, &print_item],
             )?;
 
             // ── Edit menu (for Cmd+C/V/X/A/Z) ──────────────────────
@@ -592,6 +1313,9 @@ pub fn run() {
             app.on_menu_event(|app, event| {
                 let id = event.id().as_ref();
                 match id {
+                    "new_tab" => {
+                        let _ = app.emit("menu-new-tab", ());
+                    }
                     "open" => {
                         let _ = app.emit("menu-open-file", ());
                     }
@@ -603,6 +1327,9 @@ pub fn run() {
                     }
                     "print" => {
                         let _ = app.emit("menu-print", ());
+                    }
+                    "close_file" => {
+                        let _ = app.emit("menu-close-file", ());
                     }
                     other if other.starts_with("recent_") => {
                         if let Ok(idx) = other.strip_prefix("recent_").unwrap_or("").parse::<usize>() {
@@ -627,8 +1354,12 @@ pub fn run() {
             update_recent_files,
             print_pdf,
             save_pdf_as,
+            save_locked,
             delete_pages,
-            reorder_page
+            reorder_page,
+            merge_pdfs,
+            save_form_fields,
+            embed_signatures
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

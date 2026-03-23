@@ -122,5 +122,9 @@ export function useFileOpen() {
     }
   }, [loadPath]);
 
-  return { ...state, openFile, openPath: loadPath };
+  const closeFile = useCallback(() => {
+    setState({ data: null, metadata: null, loading: false, error: null, initialAnnotations: [] });
+  }, []);
+
+  return { ...state, openFile, openPath: loadPath, closeFile };
 }
