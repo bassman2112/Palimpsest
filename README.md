@@ -6,17 +6,39 @@ A free, open-source PDF viewer and editor. View, annotate, organize pages, and m
 
 ## Features
 
-- **View PDFs** — continuous scroll with lazy page rendering
-- **Annotations** — highlight regions and place sticky notes, saved directly into the PDF
-- **Page management** — reorder, delete, and organize pages via gallery view or thumbnail sidebar
-- **Drag & drop** — open files by dragging them into the window
-- **Search** — full-text search with match navigation (Cmd/Ctrl+F)
-- **Zoom** — pinch-to-zoom, manual input, fit width, and fit page
-- **Print** — native OS print dialog
-- **Undo / Redo** — full undo/redo for annotations (Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z)
-- **Cross-platform** — runs on macOS, Windows, and Linux
-- **Fast & private** — everything runs locally, no files are uploaded anywhere
+### Viewing & Navigation
+- **Continuous scroll** with lazy page rendering and pinch-to-zoom
+- **Multi-tab** — open multiple PDFs side by side in tabs
+- **Thumbnail sidebar** and **gallery view** with drag-and-drop page reorder
+- **Text search** with match navigation (Cmd/Ctrl+F)
+- **Fit Width / Fit Page** zoom presets, plus manual zoom input (10%–10,000%)
+- **Drag & drop** — open files by dragging them onto the window
+- **Text selection** via PDF.js TextLayer
+
+### Annotations
+- **Highlights** — drag to create, 7-color palette, resize handles, recolor via right-click
+- **Notes** — click to place, editable popover, drag to reposition
+- **Signatures & initials** — draw freehand or type (3 cursive fonts), saved for reuse
+- All annotations are **draggable and resizable** after placement
+- **Undo / Redo** for all annotation actions (Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z)
+- Annotations are **saved directly into the PDF**
+
+### Page Management
+- **Reorder** pages via drag-and-drop in sidebar, gallery, or context menu
+- **Delete** pages with hover button or context menu
+- **Multi-select** in gallery (click, Shift+click, Cmd/Ctrl+A)
+- **Merge PDFs** — combine multiple documents into one
+
+### Saving & Export
+- **Save**, **Save As**, and **Save As Locked** (flattens annotations into non-editable page content)
+- **Print** via native OS dialog
+- Smart save prompt for documents with signatures
+
+### General
+- **Cross-platform** — macOS, Windows, and Linux
+- **Fast & private** — everything runs locally, no files uploaded anywhere
 - **Dark mode** — follows your system preference
+- **Recent files** — quick access from the File menu
 
 ## Download
 
