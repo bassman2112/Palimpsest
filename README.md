@@ -85,4 +85,4 @@ This bumps the version in `package.json` and `Cargo.toml`, commits, tags `v0.1.0
 
 ## License
 
-MIT
+APGL-3.0
