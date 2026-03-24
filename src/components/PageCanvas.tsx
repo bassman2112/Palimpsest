@@ -46,18 +46,32 @@ export function PageCanvas({
   const textLayerHandleRef = useRef<PdfLayerHandle | null>(null);
   const annotationLayerHandleRef = useRef<PdfLayerHandle | null>(null);
   const renderGenRef = useRef(0);
+  const prevRenderKeyRef = useRef("");
   // Bumped after text layer renders so the highlight effect re-runs
   const [textLayerReady, setTextLayerReady] = useState(0);
 
   const scaledWidth = dimension.width * zoom;
   const scaledHeight = dimension.height * zoom;
 
-  // Render canvas + text layer
+  // Render canvas + text layer (debounced on zoom-only changes)
   useEffect(() => {
     if (!isVisible || !canvasRef.current || !textLayerRef.current) return;
 
     const generation = ++renderGenRef.current;
     let cancelled = false;
+
+    // Debounce when only zoom changed — CSS scaling provides instant
+    // visual feedback while we wait for the expensive pixel render.
+    const renderKey = `${pdfDoc}:${dimension.pageNumber}:${isVisible}`;
+    const zoomOnly = prevRenderKeyRef.current === renderKey && generation > 1;
+    prevRenderKeyRef.current = renderKey;
+
+    const delay = zoomOnly ? 150 : 0;
+    const timerId = setTimeout(() => {
+      if (!cancelled && generation === renderGenRef.current) {
+        render();
+      }
+    }, delay);
 
     async function render() {
       if (renderTaskRef.current) {
@@ -111,9 +125,9 @@ export function PageCanvas({
       }
     }
 
-    render();
     return () => {
       cancelled = true;
+      clearTimeout(timerId);
       if (renderTaskRef.current) {
         try { renderTaskRef.current.cancel(); } catch {}
         renderTaskRef.current = null;
@@ -125,18 +139,6 @@ export function PageCanvas({
       if (annotationLayerHandleRef.current) {
         try { annotationLayerHandleRef.current.cancel(); } catch {}
         annotationLayerHandleRef.current = null;
-      }
-      // Clear text layer DOM
-      if (textLayerRef.current) {
-        textLayerRef.current.innerHTML = "";
-      }
-      if (annotationLayerRef.current) {
-        annotationLayerRef.current.innerHTML = "";
-      }
-      // Release GPU memory
-      if (canvasRef.current) {
-        canvasRef.current.width = 0;
-        canvasRef.current.height = 0;
       }
     };
   }, [pdfDoc, dimension.pageNumber, zoom, isVisible]);

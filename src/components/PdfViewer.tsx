@@ -90,8 +90,26 @@ export function PdfViewer({
     function handleWheel(e: WheelEvent) {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
+
       const delta = -e.deltaY * 0.01;
-      onZoomChange(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * (1 + delta))));
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * (1 + delta)));
+      if (newZoom === zoom) return;
+
+      // Anchor zoom to cursor: keep the content point under the mouse fixed
+      const rect = container!.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const contentX = container!.scrollLeft + mouseX;
+      const contentY = container!.scrollTop + mouseY;
+      const ratio = newZoom / zoom;
+
+      onZoomChange(newZoom);
+
+      // Adjust scroll after React re-renders with new zoom
+      requestAnimationFrame(() => {
+        container!.scrollLeft = contentX * ratio - mouseX;
+        container!.scrollTop = contentY * ratio - mouseY;
+      });
     }
 
     container.addEventListener("wheel", handleWheel, { passive: false });

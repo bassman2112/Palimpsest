@@ -549,9 +549,14 @@ html, body, #root {
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 12px;
   padding: 24px;
+}
+
+/* Center pages when narrower than viewport, stay flush-left when wider
+   (align-items: center would clip the left side on overflow) */
+.pdf-scroll-container > .page-container {
+  margin-inline: auto;
 }
 
 .page-container {
