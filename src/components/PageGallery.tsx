@@ -11,6 +11,8 @@ interface PageGalleryProps {
   onDeletePage?: (pageNumber: number) => void;
   onDeletePages?: (pageNumbers: number[]) => void;
   onReorderPage?: (from: number, to: number) => void;
+  onReorderPages?: (pages: number[], insertBefore: number) => void;
+  pendingSelectionRef?: React.RefObject<number[] | null>;
   // Merge mode props
   mergePages?: MergePage[];
   isMerging?: boolean;
@@ -44,6 +46,8 @@ export function PageGallery({
   onDeletePage,
   onDeletePages,
   onReorderPage,
+  onReorderPages,
+  pendingSelectionRef,
   mergePages,
   isMerging,
   onMergeRemovePage,
@@ -68,6 +72,7 @@ export function PageGallery({
   const dropTargetRef = useRef<typeof dropTarget>(null);
   const autoScrollSpeedRef = useRef(0);
   const autoScrollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dragSelectionRef = useRef<Set<number> | null>(null);
 
   const inMerge = isMerging && mergePages;
   const totalPages = inMerge ? mergePages.length : pageDimensions.length;
@@ -80,13 +85,21 @@ export function PageGallery({
     }
   }, [inMerge]);
 
-  // Clear normal selection when entering merge mode
+  // On document reload: restore pending selection from drag or undo, or clear
   useEffect(() => {
-    if (inMerge) {
+    if (dragSelectionRef.current) {
+      // From multi-drag within gallery
+      setSelectedPages(dragSelectionRef.current);
+      dragSelectionRef.current = null;
+    } else if (pendingSelectionRef?.current) {
+      // From undo in DocumentView
+      setSelectedPages(new Set(pendingSelectionRef.current));
+      pendingSelectionRef.current = null;
+    } else {
       setSelectedPages(new Set());
-      lastClickedPageRef.current = null;
     }
-  }, [inMerge]);
+    lastClickedPageRef.current = null;
+  }, [inMerge, pdfDoc]);
 
   useEffect(() => {
     return () => {
@@ -404,6 +417,17 @@ export function PageGallery({
           if (to !== ds.mergeIndex) {
             onMergeReorderPage?.(ds.mergeIndex, to);
           }
+        } else if (!inMerge && ds.multiDragPages && ds.multiDragPages.length > 1) {
+          // Multi-drag in normal mode: move all selected pages
+          const insertAt = dt.side === "left" ? dt.index + 1 : dt.index + 2;
+          onReorderPages?.(ds.multiDragPages, insertAt);
+          // Compute new page numbers so we can keep them selected after reload
+          const movedSet = new Set(ds.multiDragPages);
+          const adjustedInsert = Array.from({ length: insertAt - 1 }, (_, i) => i + 1)
+            .filter((p) => !movedSet.has(p)).length;
+          dragSelectionRef.current = new Set(
+            ds.multiDragPages.map((_, i) => adjustedInsert + i + 1)
+          );
         } else {
           const pageInsert = dt.side === "left" ? dt.index + 1 : dt.index + 2;
           const to = pageInsert > ds.pageNumber ? pageInsert - 1 : pageInsert;
@@ -427,7 +451,7 @@ export function PageGallery({
       window.removeEventListener("pointerup", handleUp);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [dragState, computeDropTarget, updateAutoScroll, onReorderPage, onMergeReorderPage, onMergeReorderPages, clearDrag, inMerge]);
+  }, [dragState, computeDropTarget, updateAutoScroll, onReorderPage, onReorderPages, onMergeReorderPage, onMergeReorderPages, clearDrag, inMerge]);
 
   const handleContextMenu = useCallback((pageNumber: number, x: number, y: number) => {
     if (!inMerge) {

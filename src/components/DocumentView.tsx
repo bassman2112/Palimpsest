@@ -189,7 +189,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
     const scrollToPageRef = useRef<((page: number) => void) | null>(null);
     const viewerContainerRef = useRef<HTMLDivElement | null>(null);
     const searchBarRef = useRef<SearchBarHandle>(null);
-    const pageUndoStackRef = useRef<{ from: number; to: number }[]>([]);
+    // Stores the inverse permutation + which pages were involved, for undo
+    const pageUndoStackRef = useRef<{ undoOrder: number[]; originalPages: number[] }[]>([]);
+    // Selection to restore in gallery after reorder/undo (ref to avoid timing issues with state)
+    const galleryPendingSelectionRef = useRef<number[] | null>(null);
 
     const fileName = metadata?.path.split(/[\\/]/).pop() ?? null;
     const totalPages = pageDimensions.length;
@@ -385,12 +388,27 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       [metadata?.path, totalPages, hasChanges, handleSave, openPath]
     );
 
+    // Compute the inverse permutation of a reorder so set_page_order can reverse it.
+    // forwardPerm[i] = the original page number now at position i (1-based).
+    // Returns inversePerm where inversePerm[i] = the current position of original page i+1.
+    const invertPerm = (perm: number[]): number[] => {
+      const inv = new Array(perm.length);
+      for (let i = 0; i < perm.length; i++) {
+        inv[perm[i] - 1] = i + 1;
+      }
+      return inv;
+    };
+
     const handleReorderPage = useCallback(
       async (from: number, to: number) => {
         if (!metadata?.path || from === to) return;
         try {
           if (hasChanges) await handleSave();
-          pageUndoStackRef.current.push({ from, to });
+          // Compute forward permutation: simulate moving page `from` to `to`
+          const fwd = Array.from({ length: totalPages }, (_, i) => i + 1);
+          const item = fwd.splice(from - 1, 1)[0];
+          fwd.splice(to - 1, 0, item);
+          pageUndoStackRef.current.push({ undoOrder: invertPerm(fwd), originalPages: [from] });
           if (pageUndoStackRef.current.length > 50) pageUndoStackRef.current.shift();
           await invoke("reorder_page", { path: metadata.path, from, to });
           await openPath(metadata.path);
@@ -399,7 +417,37 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           console.error("Failed to reorder page:", err);
         }
       },
-      [metadata?.path, hasChanges, handleSave, openPath]
+      [metadata?.path, totalPages, hasChanges, handleSave, openPath]
+    );
+
+    const handleReorderPages = useCallback(
+      async (pages: number[], insertBefore: number) => {
+        if (!metadata?.path || pages.length === 0) return;
+        try {
+          if (hasChanges) await handleSave();
+          // Compute forward permutation: simulate removing `pages` and inserting at `insertBefore`
+          const order = Array.from({ length: totalPages }, (_, i) => i + 1);
+          const movedSet = new Set(pages);
+          const remaining = order.filter((p) => !movedSet.has(p));
+          const insertIdx = insertBefore - 1;
+          let adjusted = 0;
+          for (let i = 0; i < insertIdx; i++) {
+            if (!movedSet.has(i + 1)) adjusted++;
+          }
+          const fwd = [...remaining];
+          for (let i = 0; i < pages.length; i++) {
+            fwd.splice(adjusted + i, 0, pages[i]);
+          }
+          pageUndoStackRef.current.push({ undoOrder: invertPerm(fwd), originalPages: [...pages] });
+          if (pageUndoStackRef.current.length > 50) pageUndoStackRef.current.shift();
+          await invoke("reorder_pages", { path: metadata.path, pages, insertBefore });
+          await openPath(metadata.path);
+        } catch (err) {
+          pageUndoStackRef.current.pop();
+          console.error("Failed to reorder pages:", err);
+        }
+      },
+      [metadata?.path, totalPages, hasChanges, handleSave, openPath]
     );
 
     const handleUndoReorder = useCallback(async () => {
@@ -407,7 +455,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       if (!entry || !metadata?.path) return;
       try {
         if (hasChanges) await handleSave();
-        await invoke("reorder_page", { path: metadata.path, from: entry.to, to: entry.from });
+        galleryPendingSelectionRef.current = entry.originalPages;
+        await invoke("set_page_order", { path: metadata.path, order: entry.undoOrder });
         await openPath(metadata.path);
       } catch (err) {
         pageUndoStackRef.current.push(entry);
@@ -734,6 +783,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                   onPageClick={handleGalleryPageClick}
                   onDeletePage={isMerging ? undefined : handleDeletePage}
                   onReorderPage={isMerging ? undefined : handleReorderPage}
+                  onReorderPages={isMerging ? undefined : handleReorderPages}
+                  pendingSelectionRef={galleryPendingSelectionRef}
                   mergePages={isMerging ? mergePages : undefined}
                   isMerging={isMerging}
                   onMergeRemovePage={isMerging ? mergeRemovePage : undefined}
