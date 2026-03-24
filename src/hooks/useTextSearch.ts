@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PdfDocument } from "../lib/pdf";
 
 export interface SearchMatch {
   pageNumber: number;
   index: number;
 }
 
-export function useTextSearch(pdfDoc: PDFDocumentProxy | null) {
+export function useTextSearch(pdfDoc: PdfDocument | null) {
   const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
   const [searching, setSearching] = useState(false);
@@ -39,9 +39,9 @@ export function useTextSearch(pdfDoc: PDFDocumentProxy | null) {
       if (searchIdRef.current !== id) return;
       try {
         const page = await pdfDoc.getPage(i);
-        const content = await page.getTextContent();
-        const text = content.items
-          .map((item: any) => item.str ?? "")
+        const items = await page.getTextContent();
+        const text = items
+          .map((item) => item.str)
           .join("")
           .toLowerCase();
 

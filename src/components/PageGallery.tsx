@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PdfDocument } from "../lib/pdf";
 import type { PageDimension, MergePage } from "../types";
 import { Thumbnail } from "./Thumbnail";
 import { ThumbnailContextMenu } from "./ThumbnailContextMenu";
 
 interface PageGalleryProps {
-  pdfDoc: PDFDocumentProxy;
+  pdfDoc: PdfDocument;
   pageDimensions: PageDimension[];
   onPageClick: (pageNumber: number) => void;
   onDeletePage?: (pageNumber: number) => void;

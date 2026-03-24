@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { pdfjsLib } from "../services/pdfWorkerSetup";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import { getEngine } from "../lib/pdf";
+import type { PdfDocument } from "../lib/pdf";
 import type { PageDimension } from "../types";
 
 interface PdfDocumentState {
-  pdfDoc: PDFDocumentProxy | null;
+  pdfDoc: PdfDocument | null;
   pageDimensions: PageDimension[];
   error: string | null;
 }
@@ -26,14 +26,13 @@ export function usePdfDocument(data: Uint8Array | null) {
 
     async function load() {
       try {
-        const loadingTask = pdfjsLib.getDocument({ data: data!.slice() });
-        const doc = await loadingTask.promise;
+        const doc = await getEngine().loadDocument(data!.slice());
         if (cancelled) return;
 
         const dims: PageDimension[] = [];
         for (let i = 1; i <= doc.numPages; i++) {
           const page = await doc.getPage(i);
-          const viewport = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport(1);
           dims.push({
             pageNumber: i,
             width: viewport.width,

@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { pdfjsLib } from "../services/pdfWorkerSetup";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import { getEngine } from "../lib/pdf";
+import type { PdfDocument } from "../lib/pdf";
 import type { MergeSource, MergePage, PageDimension } from "../types";
 
 const MAX_UNDO = 50;
@@ -24,20 +24,19 @@ function buildMergePages(source: MergeSource, sourceIndex: number): MergePage[] 
   }));
 }
 
-async function loadPdfFromPath(path: string): Promise<{ pdfDoc: PDFDocumentProxy; pageDimensions: PageDimension[] }> {
+async function loadPdfFromPath(path: string): Promise<{ pdfDoc: PdfDocument; pageDimensions: PageDimension[] }> {
   const b64 = await invoke<string>("read_pdf_bytes", { path });
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  const loadingTask = pdfjsLib.getDocument({ data: bytes });
-  const pdfDoc = await loadingTask.promise;
+  const pdfDoc = await getEngine().loadDocument(bytes);
 
   const dims: PageDimension[] = [];
   for (let i = 1; i <= pdfDoc.numPages; i++) {
     const page = await pdfDoc.getPage(i);
-    const viewport = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport(1);
     dims.push({ pageNumber: i, width: viewport.width, height: viewport.height });
   }
 

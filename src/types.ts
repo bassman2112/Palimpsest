@@ -1,4 +1,4 @@
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PdfDocument } from "./lib/pdf";
 
 export interface PageDimension {
   pageNumber: number;
@@ -45,7 +45,7 @@ export type Annotation = HighlightAnnotation | StickyNoteAnnotation | SignatureA
 export interface MergeSource {
   path: string;
   fileName: string;
-  pdfDoc: PDFDocumentProxy;
+  pdfDoc: PdfDocument;
   pageDimensions: PageDimension[];
 }
 
@@ -55,6 +55,6 @@ export interface MergePage {
   sourcePath: string;
   sourceFileName: string;
   sourcePageNumber: number;  // 1-indexed within source
-  pdfDoc: PDFDocumentProxy;
+  pdfDoc: PdfDocument;
   dimension: PageDimension;
 }

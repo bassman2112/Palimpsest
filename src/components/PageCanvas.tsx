@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
-import type { RenderTask } from "pdfjs-dist";
-import { TextLayer, AnnotationLayer } from "pdfjs-dist";
+import type { PdfDocument, PdfRenderTask, PdfLayerHandle } from "../lib/pdf";
+import { getEngine } from "../lib/pdf";
 import type { PageDimension, Annotation, AnnotationTool } from "../types";
 import type { SearchMatch } from "../hooks/useTextSearch";
 import { AnnotationOverlay } from "./AnnotationOverlay";
 
 interface PageCanvasProps {
-  pdfDoc: PDFDocumentProxy;
+  pdfDoc: PdfDocument;
   dimension: PageDimension;
   zoom: number;
   isVisible: boolean;
@@ -43,9 +42,9 @@ export function PageCanvas({
   const textLayerRef = useRef<HTMLDivElement>(null);
   const annotationLayerRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
-  const renderTaskRef = useRef<RenderTask | null>(null);
-  const textLayerInstanceRef = useRef<TextLayer | null>(null);
-  const annotationLayerInstanceRef = useRef<AnnotationLayer | null>(null);
+  const renderTaskRef = useRef<PdfRenderTask | null>(null);
+  const textLayerHandleRef = useRef<PdfLayerHandle | null>(null);
+  const annotationLayerHandleRef = useRef<PdfLayerHandle | null>(null);
   const renderGenRef = useRef(0);
   // Bumped after text layer renders so the highlight effect re-runs
   const [textLayerReady, setTextLayerReady] = useState(0);
@@ -65,21 +64,19 @@ export function PageCanvas({
         try { renderTaskRef.current.cancel(); } catch {}
         renderTaskRef.current = null;
       }
-      if (textLayerInstanceRef.current) {
-        try { textLayerInstanceRef.current.cancel(); } catch {}
-        textLayerInstanceRef.current = null;
+      if (textLayerHandleRef.current) {
+        try { textLayerHandleRef.current.cancel(); } catch {}
+        textLayerHandleRef.current = null;
       }
 
       try {
         const page = await pdfDoc.getPage(dimension.pageNumber);
         if (cancelled || generation !== renderGenRef.current) return;
 
-        const viewport = page.getViewport({ scale: zoom });
-        const canvas = canvasRef.current!;
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
+        const viewport = page.getViewport(zoom);
+        const dpr = window.devicePixelRatio || 1;
 
-        const task = page.render({ canvas, viewport });
+        const task = page.renderToCanvas(canvasRef.current!, viewport, { devicePixelRatio: dpr });
         renderTaskRef.current = task;
         await task.promise;
 
@@ -88,16 +85,9 @@ export function PageCanvas({
         const textLayerDiv = textLayerRef.current!;
         textLayerDiv.innerHTML = "";
 
-        const textContent = await page.getTextContent();
-        if (cancelled || generation !== renderGenRef.current) return;
-
-        const textLayer = new TextLayer({
-          textContentSource: textContent,
-          container: textLayerDiv,
-          viewport,
-        });
-        textLayerInstanceRef.current = textLayer;
-        await textLayer.render();
+        const textHandle = page.renderTextLayer(textLayerDiv, viewport);
+        textLayerHandleRef.current = textHandle;
+        await textHandle.promise;
 
         if (cancelled || generation !== renderGenRef.current) return;
 
@@ -105,51 +95,17 @@ export function PageCanvas({
         const annotationLayerDiv = annotationLayerRef.current;
         if (annotationLayerDiv) {
           annotationLayerDiv.innerHTML = "";
-          const pdfAnnotations = await page.getAnnotations();
-          if (cancelled || generation !== renderGenRef.current) return;
 
-          // Minimal link service that does nothing (we don't navigate links)
-          const linkService = {
-            getDestinationHash: () => "#",
-            getAnchorUrl: () => "#",
-            addLinkAttributes: () => {},
-            isPageVisible: () => true,
-            isPageCached: () => true,
-            externalLinkEnabled: true,
-            externalLinkTarget: 0,
-            externalLinkRel: "noopener noreferrer nofollow",
-          };
-
-          const annotLayer = new AnnotationLayer({
-            div: annotationLayerDiv,
-            accessibilityManager: null,
-            annotationCanvasMap: null,
-            annotationEditorUIManager: null,
-            page,
-            viewport,
-            structTreeLayer: null,
-            commentManager: null,
-            linkService: linkService as any,
-            annotationStorage: pdfDoc.annotationStorage,
-          } as any);
-          annotationLayerInstanceRef.current = annotLayer;
-
-          await annotLayer.render({
-            viewport,
-            div: annotationLayerDiv,
-            annotations: pdfAnnotations,
-            page,
-            linkService: linkService as any,
-            renderForms: true,
-            annotationStorage: pdfDoc.annotationStorage,
-          });
+          const annotHandle = page.renderAnnotationLayer(annotationLayerDiv, viewport, { renderForms: true });
+          annotationLayerHandleRef.current = annotHandle;
+          await annotHandle.promise;
         }
 
         if (cancelled || generation !== renderGenRef.current) return;
 
         setTextLayerReady((v) => v + 1);
-      } catch (err: any) {
-        if (err?.name !== "RenderingCancelledException" && !cancelled) {
+      } catch (err) {
+        if (!getEngine().isCancelError(err) && !cancelled) {
           console.error(`[PageCanvas] Render error page ${dimension.pageNumber}:`, err);
         }
       }
@@ -162,11 +118,14 @@ export function PageCanvas({
         try { renderTaskRef.current.cancel(); } catch {}
         renderTaskRef.current = null;
       }
-      if (textLayerInstanceRef.current) {
-        try { textLayerInstanceRef.current.cancel(); } catch {}
-        textLayerInstanceRef.current = null;
+      if (textLayerHandleRef.current) {
+        try { textLayerHandleRef.current.cancel(); } catch {}
+        textLayerHandleRef.current = null;
       }
-      annotationLayerInstanceRef.current = null;
+      if (annotationLayerHandleRef.current) {
+        try { annotationLayerHandleRef.current.cancel(); } catch {}
+        annotationLayerHandleRef.current = null;
+      }
       // Clear text layer DOM
       if (textLayerRef.current) {
         textLayerRef.current.innerHTML = "";

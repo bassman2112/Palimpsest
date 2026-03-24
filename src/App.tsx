@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import "./services/pdfWorkerSetup";
+import "./lib/pdf";
 import { useRecentFiles } from "./hooks/useRecentFiles";
 import { TabBar } from "./components/TabBar";
 import type { Tab, TabColor } from "./components/TabBar";

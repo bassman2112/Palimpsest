@@ -21,6 +21,12 @@ export default defineConfig(async () => ({
       ],
     }),
   ],
+  optimizeDeps: {
+    exclude: ["mupdf"],
+  },
+  build: {
+    target: "esnext",
+  },
   clearScreen: false,
   server: {
     port: 1420,

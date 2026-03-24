@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PdfDocument } from "../lib/pdf";
 import type { PageDimension, AnnotationTool, Annotation } from "../types";
 import type { SearchMatch } from "../hooks/useTextSearch";
 import { usePageVisibility } from "../hooks/usePageVisibility";
@@ -9,7 +9,7 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 5;
 
 interface PdfViewerProps {
-  pdfDoc: PDFDocumentProxy;
+  pdfDoc: PdfDocument;
   pageDimensions: PageDimension[];
   zoom: number;
   onZoomChange: (zoom: number) => void;

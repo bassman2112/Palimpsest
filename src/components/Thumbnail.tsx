@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
-import type { RenderTask } from "pdfjs-dist";
+import type { PdfDocument, PdfRenderTask } from "../lib/pdf";
+import { getEngine } from "../lib/pdf";
 import type { PageDimension } from "../types";
 
 const THUMB_WIDTH = 150;
 
 interface ThumbnailProps {
-  pdfDoc: PDFDocumentProxy;
+  pdfDoc: PdfDocument;
   dimension: PageDimension;
   isActive: boolean;
   isDragging?: boolean;
@@ -24,7 +24,7 @@ interface ThumbnailProps {
 export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected, size, label, onClick, onDoubleClick, onDeletePage, onDeleteMergePage, onContextMenu, onPointerDown }: ThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const renderTaskRef = useRef<RenderTask | null>(null);
+  const renderTaskRef = useRef<PdfRenderTask | null>(null);
   const renderedRef = useRef(false);
 
   const thumbWidth = size ?? THUMB_WIDTH;
@@ -61,16 +61,12 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected,
 
     try {
       const page = await pdfDoc.getPage(dimension.pageNumber);
-      const viewport = page.getViewport({ scale });
-      const canvas = canvasRef.current!;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      const task = page.render({ canvas, viewport });
+      const viewport = page.getViewport(scale);
+      const task = page.renderToCanvas(canvasRef.current!, viewport);
       renderTaskRef.current = task;
       await task.promise;
-    } catch (err: any) {
-      if (err?.name !== "RenderingCancelledException") {
+    } catch (err) {
+      if (!getEngine().isCancelError(err)) {
         console.error(`[Thumbnail] Render error page ${dimension.pageNumber}:`, err);
       }
     }

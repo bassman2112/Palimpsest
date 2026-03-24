@@ -312,23 +312,18 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           });
         }
 
-        // Save form field values from AnnotationStorage
+        // Save form field values
         if (pdfDoc && hasFormChanges) {
           try {
-            const storage = pdfDoc.annotationStorage as any;
-            const allData = storage.getAll?.() ?? storage.serializable;
-            if (allData) {
-              const fields: FormFieldSaveData[] = [];
-              for (const [key, val] of Object.entries(allData)) {
-                if (val && typeof val === "object" && "value" in val) {
-                  const v = val as any;
-                  fields.push({
-                    field_name: key,
-                    value: String(v.value ?? ""),
-                    field_type: v.type ?? "text",
-                  });
-                }
-              }
+            const formData = pdfDoc.getFormData();
+            if (formData) {
+              const fields: FormFieldSaveData[] = Object.entries(formData).map(
+                ([key, val]) => ({
+                  field_name: key,
+                  value: val.value,
+                  field_type: val.type ?? "text",
+                })
+              );
               if (fields.length > 0) {
                 await invoke("save_form_fields", {
                   path: metadata.path,
@@ -612,18 +607,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       };
     }, [isActive, openPath, isMerging, viewMode, mergeAddDocumentByPath]);
 
-    // Detect form field changes from AnnotationStorage
+    // Detect form field changes
     useEffect(() => {
       if (!pdfDoc) return;
-      const storage = pdfDoc.annotationStorage as any;
-      if (!storage) return;
-      const onModified = () => setHasFormChanges(true);
-      storage.onSetModified = onModified;
-      return () => {
-        if (storage.onSetModified === onModified) {
-          storage.onSetModified = null;
-        }
-      };
+      return pdfDoc.onFormModified(() => setHasFormChanges(true));
     }, [pdfDoc]);
 
     // Reset form change tracking when file changes
