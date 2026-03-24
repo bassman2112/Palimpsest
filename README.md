@@ -13,7 +13,7 @@ A free, open-source PDF viewer and editor. View, annotate, organize pages, and m
 - **Text search** with match navigation (Cmd/Ctrl+F)
 - **Fit Width / Fit Page** zoom presets, plus manual zoom input (10%–10,000%)
 - **Drag & drop** — open files by dragging them onto the window
-- **Text selection** via PDF.js TextLayer
+- **Text selection** with copy support
 
 ### Annotations
 - **Highlights** — drag to create, 7-color palette, resize handles, recolor via right-click
@@ -80,9 +80,9 @@ This bumps the version in `package.json` and `Cargo.toml`, commits, tags `v0.1.0
 
 - **Frontend:** React 19, TypeScript, Vite
 - **Desktop:** Tauri 2
-- **PDF rendering:** PDF.js (pdfjs-dist)
+- **PDF rendering:** MuPDF WASM (default) or PDF.js — switchable at runtime
 - **PDF manipulation:** lopdf (Rust)
 
 ## License
 
-APGL-3.0
+[AGPL-3.0](./LICENSE)
