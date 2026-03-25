@@ -165,6 +165,49 @@ pub fn delete_pages(path: String, page_numbers: Vec<u32>) -> Result<(), String> 
     Ok(())
 }
 
+#[tauri::command]
+pub fn rotate_pages(path: String, page_numbers: Vec<u32>, degrees: i32) -> Result<(), String> {
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages = doc.get_pages();
+    let total = pages.len() as u32;
+
+    for &p in &page_numbers {
+        if p < 1 || p > total {
+            return Err(format!("Page {} out of range (1-{})", p, total));
+        }
+    }
+
+    // Collect page object IDs for target pages
+    let page_ids: Vec<lopdf::ObjectId> = page_numbers
+        .iter()
+        .map(|&p| pages.get(&p).copied().ok_or_else(|| format!("Page {} not found", p)))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for page_id in page_ids {
+        let page_obj = doc
+            .get_object_mut(page_id)
+            .map_err(|e| format!("Failed to get page object: {}", e))?;
+        let dict = page_obj
+            .as_dict_mut()
+            .map_err(|e| format!("Page is not a dict: {}", e))?;
+
+        let current = dict
+            .get(b"Rotate")
+            .ok()
+            .and_then(|o| match o {
+                Object::Integer(n) => Some(*n as i32),
+                _ => None,
+            })
+            .unwrap_or(0);
+
+        let new_rotation = ((current + degrees) % 360 + 360) % 360;
+        dict.set("Rotate", Object::Integer(new_rotation as i64));
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,6 +339,50 @@ mod tests {
         let result = delete_pages(path.clone(), vec![1, 2]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Cannot delete all pages"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// Helper: read the /Rotate value of a given page (1-based)
+    fn get_page_rotation(path: &str, page_num: u32) -> i32 {
+        let doc = Document::load(path).unwrap();
+        let pages = doc.get_pages();
+        let page_id = pages.get(&page_num).unwrap();
+        let page_obj = doc.get_object(*page_id).unwrap();
+        let dict = page_obj.as_dict().unwrap();
+        dict.get(b"Rotate")
+            .ok()
+            .and_then(|o| match o {
+                Object::Integer(n) => Some(*n as i32),
+                _ => None,
+            })
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn rotate_page_90_clockwise() {
+        let path = build_temp_pdf(3);
+        rotate_pages(path.clone(), vec![2], 90).unwrap();
+        assert_eq!(get_page_rotation(&path, 1), 0);
+        assert_eq!(get_page_rotation(&path, 2), 90);
+        assert_eq!(get_page_rotation(&path, 3), 0);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn rotate_page_cumulative() {
+        let path = build_temp_pdf(2);
+        rotate_pages(path.clone(), vec![1], 90).unwrap();
+        rotate_pages(path.clone(), vec![1], 90).unwrap();
+        assert_eq!(get_page_rotation(&path, 1), 180);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn rotate_page_wrap_360() {
+        let path = build_temp_pdf(2);
+        rotate_pages(path.clone(), vec![1], 270).unwrap();
+        rotate_pages(path.clone(), vec![1], 90).unwrap();
+        assert_eq!(get_page_rotation(&path, 1), 0);
         std::fs::remove_file(&path).ok();
     }
 }

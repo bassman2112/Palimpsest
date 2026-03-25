@@ -9,6 +9,8 @@ interface ThumbnailContextMenuProps {
   onMoveUp: () => void;
   onMoveDown: () => void;
   onReorder: () => void;
+  onRotateClockwise?: () => void;
+  onRotateCounterclockwise?: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -21,6 +23,8 @@ export function ThumbnailContextMenu({
   onMoveUp,
   onMoveDown,
   onReorder,
+  onRotateClockwise,
+  onRotateCounterclockwise,
   onDelete,
   onClose,
 }: ThumbnailContextMenuProps) {
@@ -75,6 +79,25 @@ export function ThumbnailContextMenu({
         Reorder
       </button>
       <div className="context-menu-separator" />
+      {onRotateClockwise && (
+        <button
+          className="context-menu-item"
+          onClick={() => { onRotateClockwise(); onClose(); }}
+        >
+          Rotate Right
+        </button>
+      )}
+      {onRotateCounterclockwise && (
+        <button
+          className="context-menu-item"
+          onClick={() => { onRotateCounterclockwise(); onClose(); }}
+        >
+          Rotate Left
+        </button>
+      )}
+      {(onRotateClockwise || onRotateCounterclockwise) && (
+        <div className="context-menu-separator" />
+      )}
       <button
         className="context-menu-item context-menu-item-danger"
         disabled={onlyPage}

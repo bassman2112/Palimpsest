@@ -129,8 +129,11 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
     const scrollToPageRef = useRef<((page: number) => void) | null>(null);
     const viewerContainerRef = useRef<HTMLDivElement | null>(null);
     const searchBarRef = useRef<SearchBarHandle>(null);
-    // Stores the inverse permutation + which pages were involved, for undo
-    const pageUndoStackRef = useRef<{ undoOrder: number[]; originalPages: number[] }[]>([]);
+    // Stores page operations for undo (reorder or rotate)
+    type PageUndoEntry =
+      | { type: "reorder"; undoOrder: number[]; originalPages: number[] }
+      | { type: "rotate"; pageNumbers: number[]; degrees: number };
+    const pageUndoStackRef = useRef<PageUndoEntry[]>([]);
     // Selection to restore in gallery after reorder/undo (ref to avoid timing issues with state)
     const galleryPendingSelectionRef = useRef<number[] | null>(null);
 
@@ -354,6 +357,23 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       [metadata?.path, totalPages, hasChanges, handleSave, openPath]
     );
 
+    const handleRotatePage = useCallback(
+      async (pageNumbers: number[], degrees: number) => {
+        if (!metadata?.path) return;
+        try {
+          if (hasChanges) await handleSave();
+          pageUndoStackRef.current.push({ type: "rotate", pageNumbers: [...pageNumbers], degrees });
+          if (pageUndoStackRef.current.length > 50) pageUndoStackRef.current.shift();
+          await invoke("rotate_pages", { path: metadata.path, pageNumbers, degrees });
+          await openPath(metadata.path);
+        } catch (err) {
+          pageUndoStackRef.current.pop();
+          console.error("Failed to rotate page:", err);
+        }
+      },
+      [metadata?.path, hasChanges, handleSave, openPath]
+    );
+
     // Compute the inverse permutation of a reorder so set_page_order can reverse it.
     // forwardPerm[i] = the original page number now at position i (1-based).
     // Returns inversePerm where inversePerm[i] = the current position of original page i+1.
@@ -374,7 +394,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           const fwd = Array.from({ length: totalPages }, (_, i) => i + 1);
           const item = fwd.splice(from - 1, 1)[0];
           fwd.splice(to - 1, 0, item);
-          pageUndoStackRef.current.push({ undoOrder: invertPerm(fwd), originalPages: [from] });
+          pageUndoStackRef.current.push({ type: "reorder", undoOrder: invertPerm(fwd), originalPages: [from] });
           if (pageUndoStackRef.current.length > 50) pageUndoStackRef.current.shift();
           await invoke("reorder_page", { path: metadata.path, from, to });
           await openPath(metadata.path);
@@ -404,7 +424,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           for (let i = 0; i < pages.length; i++) {
             fwd.splice(adjusted + i, 0, pages[i]);
           }
-          pageUndoStackRef.current.push({ undoOrder: invertPerm(fwd), originalPages: [...pages] });
+          pageUndoStackRef.current.push({ type: "reorder", undoOrder: invertPerm(fwd), originalPages: [...pages] });
           if (pageUndoStackRef.current.length > 50) pageUndoStackRef.current.shift();
           await invoke("reorder_pages", { path: metadata.path, pages, insertBefore });
           await openPath(metadata.path);
@@ -416,17 +436,26 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       [metadata?.path, totalPages, hasChanges, handleSave, openPath]
     );
 
-    const handleUndoReorder = useCallback(async () => {
+    const handleUndoPageOp = useCallback(async () => {
       const entry = pageUndoStackRef.current.pop();
       if (!entry || !metadata?.path) return;
       try {
         if (hasChanges) await handleSave();
-        galleryPendingSelectionRef.current = entry.originalPages;
-        await invoke("set_page_order", { path: metadata.path, order: entry.undoOrder });
+        if (entry.type === "reorder") {
+          galleryPendingSelectionRef.current = entry.originalPages;
+          await invoke("set_page_order", { path: metadata.path, order: entry.undoOrder });
+        } else {
+          // Rotate undo: apply inverse rotation
+          await invoke("rotate_pages", {
+            path: metadata.path,
+            pageNumbers: entry.pageNumbers,
+            degrees: -entry.degrees,
+          });
+        }
         await openPath(metadata.path);
       } catch (err) {
         pageUndoStackRef.current.push(entry);
-        console.error("Failed to undo page reorder:", err);
+        console.error("Failed to undo page operation:", err);
       }
     }, [metadata?.path, hasChanges, handleSave, openPath]);
 
@@ -520,7 +549,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           if (isMerging) {
             mergeUndo();
           } else if (!undo()) {
-            handleUndoReorder();
+            handleUndoPageOp();
           }
         }
         if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "z" || e.key === "Z")) {
@@ -554,7 +583,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       activeTool,
       undo,
       redo,
-      handleUndoReorder,
+      handleUndoPageOp,
       searchOpen,
       handlePrint,
       handleSaveAs,
@@ -754,6 +783,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                   getPageAnnotations={isMerging ? undefined : getPageAnnotations}
                   onReorderPage={isMerging ? undefined : handleReorderPage}
                   onReorderPages={isMerging ? undefined : handleReorderPages}
+                  onRotatePage={isMerging ? undefined : handleRotatePage}
                   pendingSelectionRef={galleryPendingSelectionRef}
                   mergePages={isMerging ? mergePages : undefined}
                   isMerging={isMerging}
@@ -774,6 +804,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                       onPageClick={handleThumbnailClick}
                       onDeletePage={handleDeletePage}
                       onReorderPage={handleReorderPage}
+                      onRotatePage={handleRotatePage}
                     />
                   )}
                   <PdfViewer

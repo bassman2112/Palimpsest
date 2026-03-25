@@ -12,6 +12,7 @@ interface ThumbnailSidebarProps {
   onPageClick: (pageNumber: number) => void;
   onDeletePage?: (pageNumber: number) => void;
   onReorderPage?: (from: number, to: number) => void;
+  onRotatePage?: (pageNumbers: number[], degrees: number) => void;
 }
 
 interface DragState {
@@ -28,6 +29,7 @@ export function ThumbnailSidebar({
   onPageClick,
   onDeletePage,
   onReorderPage,
+  onRotatePage,
 }: ThumbnailSidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ pageNumber: number; x: number; y: number } | null>(null);
@@ -319,6 +321,8 @@ export function ThumbnailSidebar({
           onMoveUp={() => onReorderPage?.(contextMenu.pageNumber, contextMenu.pageNumber - 1)}
           onMoveDown={() => onReorderPage?.(contextMenu.pageNumber, contextMenu.pageNumber + 1)}
           onReorder={handleReorderFromMenu}
+          onRotateClockwise={onRotatePage ? () => onRotatePage([contextMenu.pageNumber], 90) : undefined}
+          onRotateCounterclockwise={onRotatePage ? () => onRotatePage([contextMenu.pageNumber], -90) : undefined}
           onDelete={() => onDeletePage?.(contextMenu.pageNumber)}
           onClose={closeMenu}
         />

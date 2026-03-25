@@ -13,6 +13,7 @@ interface PageGalleryProps {
   getPageAnnotations?: (pageNumber: number) => Annotation[];
   onReorderPage?: (from: number, to: number) => void;
   onReorderPages?: (pages: number[], insertBefore: number) => void;
+  onRotatePage?: (pageNumbers: number[], degrees: number) => void;
   pendingSelectionRef?: React.RefObject<number[] | null>;
   // Merge mode props
   mergePages?: MergePage[];
@@ -49,6 +50,7 @@ export function PageGallery({
   getPageAnnotations,
   onReorderPage,
   onReorderPages,
+  onRotatePage,
   pendingSelectionRef,
   mergePages,
   isMerging,
@@ -597,6 +599,18 @@ export function PageGallery({
           onMoveUp={() => onReorderPage?.(contextMenu.pageNumber, contextMenu.pageNumber - 1)}
           onMoveDown={() => onReorderPage?.(contextMenu.pageNumber, contextMenu.pageNumber + 1)}
           onReorder={handleReorderFromMenu}
+          onRotateClockwise={onRotatePage ? () => {
+            const pages = selectedPages.has(contextMenu.pageNumber) && selectedPages.size > 1
+              ? [...selectedPages]
+              : [contextMenu.pageNumber];
+            onRotatePage(pages, 90);
+          } : undefined}
+          onRotateCounterclockwise={onRotatePage ? () => {
+            const pages = selectedPages.has(contextMenu.pageNumber) && selectedPages.size > 1
+              ? [...selectedPages]
+              : [contextMenu.pageNumber];
+            onRotatePage(pages, -90);
+          } : undefined}
           onDelete={() => onDeletePage?.(contextMenu.pageNumber)}
           onClose={closeMenu}
         />

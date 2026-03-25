@@ -71,6 +71,9 @@ make run
 # Type-check frontend + backend
 make check
 
+# Run tests (frontend + Rust)
+make test
+
 # Production build
 make build
 ```
@@ -89,6 +92,7 @@ This bumps the version in `package.json` and `Cargo.toml`, commits, tags `v0.1.0
 - **Desktop:** Tauri 2
 - **PDF rendering:** MuPDF WASM (default) or PDF.js — switchable at runtime
 - **PDF manipulation:** lopdf (Rust)
+- **Testing:** Vitest + React Testing Library (frontend), cargo test (Rust)
 
 ## License
 

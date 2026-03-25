@@ -36,7 +36,8 @@ pub fn run() {
             commands::embed_signatures,
             commands::save_ink_annotations,
             commands::save_shape_annotations,
-            commands::save_text_annotations
+            commands::save_text_annotations,
+            commands::rotate_pages
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
