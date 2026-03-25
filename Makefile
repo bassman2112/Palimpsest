@@ -1,4 +1,4 @@
-.PHONY: run build check clean release
+.PHONY: run build check clean release test
 
 run:
 	npm run tauri dev
@@ -13,6 +13,10 @@ check:
 clean:
 	rm -rf dist
 	cd src-tauri && cargo clean
+
+test:
+	npx vitest run
+	cd src-tauri && ~/.cargo/bin/cargo test
 
 # Cut a release: make release VERSION=0.2.0
 release:

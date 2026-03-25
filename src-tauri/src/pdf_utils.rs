@@ -211,3 +211,256 @@ pub(crate) fn parse_font_family_from_name(name: &str) -> (&'static str, bool, bo
     };
     (family, bold, italic)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::{Document, Object, Dictionary, StringFormat};
+
+    // --- Pure function tests (no Document needed) ---
+
+    #[test]
+    fn obj_to_f64_integer() {
+        assert_eq!(obj_to_f64(&Object::Integer(42)).unwrap(), 42.0);
+    }
+
+    #[test]
+    fn obj_to_f64_real() {
+        let val = obj_to_f64(&Object::Real(3.14)).unwrap();
+        assert!((val - 3.14).abs() < 0.001);
+    }
+
+    #[test]
+    fn obj_to_f64_string_err() {
+        assert!(obj_to_f64(&Object::String(b"x".to_vec(), StringFormat::Literal)).is_err());
+    }
+
+    #[test]
+    fn parse_rect_valid() {
+        let arr = vec![
+            Object::Integer(0),
+            Object::Integer(0),
+            Object::Real(612.0),
+            Object::Real(792.0),
+        ];
+        let (x1, y1, x2, y2) = parse_rect(&arr).unwrap();
+        assert_eq!(x1, 0.0);
+        assert_eq!(y1, 0.0);
+        assert!((x2 - 612.0).abs() < 0.001);
+        assert!((y2 - 792.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn parse_rect_too_short() {
+        let arr = vec![Object::Integer(0), Object::Integer(0), Object::Integer(612)];
+        assert!(parse_rect(&arr).is_err());
+    }
+
+    #[test]
+    fn pdf_escape_text_parens() {
+        assert_eq!(pdf_escape_text("Hello (world)"), "Hello \\(world\\)");
+    }
+
+    #[test]
+    fn pdf_escape_text_backslash() {
+        assert_eq!(pdf_escape_text("a\\b"), "a\\\\b");
+    }
+
+    #[test]
+    fn pdf_escape_text_clean() {
+        assert_eq!(pdf_escape_text("Hello world"), "Hello world");
+    }
+
+    // --- pdf_font_name: all 12 combos ---
+
+    #[test]
+    fn font_name_serif() {
+        assert_eq!(pdf_font_name("serif", false, false), "Times-Roman");
+        assert_eq!(pdf_font_name("serif", true, false), "Times-Bold");
+        assert_eq!(pdf_font_name("serif", false, true), "Times-Italic");
+        assert_eq!(pdf_font_name("serif", true, true), "Times-BoldItalic");
+    }
+
+    #[test]
+    fn font_name_monospace() {
+        assert_eq!(pdf_font_name("monospace", false, false), "Courier");
+        assert_eq!(pdf_font_name("monospace", true, false), "Courier-Bold");
+        assert_eq!(pdf_font_name("monospace", false, true), "Courier-Oblique");
+        assert_eq!(pdf_font_name("monospace", true, true), "Courier-BoldOblique");
+    }
+
+    #[test]
+    fn font_name_sans_serif() {
+        assert_eq!(pdf_font_name("sans-serif", false, false), "Helvetica");
+        assert_eq!(pdf_font_name("sans-serif", true, false), "Helvetica-Bold");
+        assert_eq!(pdf_font_name("sans-serif", false, true), "Helvetica-Oblique");
+        assert_eq!(pdf_font_name("sans-serif", true, true), "Helvetica-BoldOblique");
+    }
+
+    #[test]
+    fn font_name_unknown_defaults_sans() {
+        assert_eq!(pdf_font_name("fantasy", false, false), "Helvetica");
+    }
+
+    // --- parse_font_family_from_name ---
+
+    #[test]
+    fn parse_font_times_bold() {
+        assert_eq!(parse_font_family_from_name("Times-Bold"), ("serif", true, false));
+    }
+
+    #[test]
+    fn parse_font_courier_bold_oblique() {
+        assert_eq!(parse_font_family_from_name("Courier-BoldOblique"), ("monospace", true, true));
+    }
+
+    #[test]
+    fn parse_font_helvetica() {
+        assert_eq!(parse_font_family_from_name("Helvetica"), ("sans-serif", false, false));
+    }
+
+    #[test]
+    fn parse_font_unknown_defaults_sans() {
+        assert_eq!(parse_font_family_from_name("UnknownFont"), ("sans-serif", false, false));
+    }
+
+    // --- Tests requiring in-memory Document ---
+
+    #[test]
+    fn resolve_object_direct() {
+        let doc = Document::new();
+        let obj = Object::Integer(42);
+        let resolved = resolve_object(&doc, &obj).unwrap();
+        assert_eq!(resolved, Object::Integer(42));
+    }
+
+    #[test]
+    fn resolve_object_reference() {
+        let mut doc = Document::new();
+        let id = doc.add_object(Object::Integer(99));
+        let resolved = resolve_object(&doc, &Object::Reference(id)).unwrap();
+        assert_eq!(resolved, Object::Integer(99));
+    }
+
+    #[test]
+    fn is_palimpsest_annotation_true() {
+        let mut dict = Dictionary::new();
+        dict.set("NM", Object::String(b"palimpsest-abc123".to_vec(), StringFormat::Literal));
+        dict.set("Type", Object::Name(b"Annot".to_vec()));
+        let doc = Document::new();
+        assert!(is_palimpsest_annotation(&doc, &Object::Dictionary(dict)));
+    }
+
+    #[test]
+    fn is_palimpsest_annotation_no_nm() {
+        let mut dict = Dictionary::new();
+        dict.set("Type", Object::Name(b"Annot".to_vec()));
+        let doc = Document::new();
+        assert!(!is_palimpsest_annotation(&doc, &Object::Dictionary(dict)));
+    }
+
+    #[test]
+    fn is_palimpsest_annotation_non_dict() {
+        let doc = Document::new();
+        assert!(!is_palimpsest_annotation(&doc, &Object::Integer(42)));
+    }
+
+    /// Helper: build a minimal PDF Document with N blank pages
+    fn build_doc_with_pages(n: usize) -> (Document, Vec<ObjectId>) {
+        let mut doc = Document::new();
+        let pages_id = doc.new_object_id();
+        let mut kids: Vec<Object> = Vec::new();
+        let mut page_ids = Vec::new();
+        for _ in 0..n {
+            let mut page_dict = Dictionary::new();
+            page_dict.set("Type", Object::Name(b"Page".to_vec()));
+            page_dict.set("Parent", Object::Reference(pages_id));
+            page_dict.set("MediaBox", Object::Array(vec![
+                Object::Integer(0), Object::Integer(0),
+                Object::Integer(612), Object::Integer(792),
+            ]));
+            let page_id = doc.add_object(Object::Dictionary(page_dict));
+            kids.push(Object::Reference(page_id));
+            page_ids.push(page_id);
+        }
+        let mut pages_dict = Dictionary::new();
+        pages_dict.set("Type", Object::Name(b"Pages".to_vec()));
+        pages_dict.set("Count", Object::Integer(n as i64));
+        pages_dict.set("Kids", Object::Array(kids));
+        doc.objects.insert(pages_id, Object::Dictionary(pages_dict));
+
+        let mut catalog = Dictionary::new();
+        catalog.set("Type", Object::Name(b"Catalog".to_vec()));
+        catalog.set("Pages", Object::Reference(pages_id));
+        let catalog_id = doc.add_object(Object::Dictionary(catalog));
+        doc.trailer.set("Root", Object::Reference(catalog_id));
+        (doc, page_ids)
+    }
+
+    #[test]
+    fn get_existing_annots_with_annots() {
+        let (mut doc, page_ids) = build_doc_with_pages(1);
+        let annot_ref1 = doc.add_object(Object::Integer(1));
+        let annot_ref2 = doc.add_object(Object::Integer(2));
+        // Add Annots array to the page
+        if let Ok(page_obj) = doc.get_object_mut(page_ids[0]) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                dict.set("Annots", Object::Array(vec![
+                    Object::Reference(annot_ref1),
+                    Object::Reference(annot_ref2),
+                ]));
+            }
+        }
+        let annots = get_existing_annots(&doc, page_ids[0]);
+        assert_eq!(annots.len(), 2);
+    }
+
+    #[test]
+    fn get_existing_annots_without_annots() {
+        let (doc, page_ids) = build_doc_with_pages(1);
+        let annots = get_existing_annots(&doc, page_ids[0]);
+        assert!(annots.is_empty());
+    }
+
+    #[test]
+    fn get_page_media_box_direct() {
+        let (doc, page_ids) = build_doc_with_pages(1);
+        let (x1, y1, x2, y2) = get_page_media_box(&doc, page_ids[0]).unwrap();
+        assert_eq!(x1, 0.0);
+        assert_eq!(y1, 0.0);
+        assert_eq!(x2, 612.0);
+        assert_eq!(y2, 792.0);
+    }
+
+    #[test]
+    fn get_page_media_box_default_fallback() {
+        // Page without MediaBox and no parent → falls back to US Letter
+        let mut doc = Document::new();
+        let mut page_dict = Dictionary::new();
+        page_dict.set("Type", Object::Name(b"Page".to_vec()));
+        let page_id = doc.add_object(Object::Dictionary(page_dict));
+        let (x1, y1, x2, y2) = get_page_media_box(&doc, page_id).unwrap();
+        assert_eq!((x1, y1, x2, y2), (0.0, 0.0, 612.0, 792.0));
+    }
+
+    #[test]
+    fn get_page_media_box_parent_inheritance() {
+        let mut doc = Document::new();
+        // Parent with MediaBox
+        let mut parent_dict = Dictionary::new();
+        parent_dict.set("Type", Object::Name(b"Pages".to_vec()));
+        parent_dict.set("MediaBox", Object::Array(vec![
+            Object::Integer(0), Object::Integer(0),
+            Object::Integer(595), Object::Integer(842),  // A4
+        ]));
+        let parent_id = doc.add_object(Object::Dictionary(parent_dict));
+        // Child page without MediaBox
+        let mut page_dict = Dictionary::new();
+        page_dict.set("Type", Object::Name(b"Page".to_vec()));
+        page_dict.set("Parent", Object::Reference(parent_id));
+        let page_id = doc.add_object(Object::Dictionary(page_dict));
+        let (_, _, x2, y2) = get_page_media_box(&doc, page_id).unwrap();
+        assert_eq!(x2, 595.0);
+        assert_eq!(y2, 842.0);
+    }
+}
