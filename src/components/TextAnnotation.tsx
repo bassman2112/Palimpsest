@@ -1,24 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TextAnnotation as TextAnnotationType, PageDimension } from "../types";
+import { MIN_TEXT_WIDTH, MIN_TEXT_HEIGHT } from "../constants";
+import { htmlToPlainText } from "../lib/utils";
+import { useDragToMove } from "../hooks/useDragToMove";
+import { useResizeHandles } from "../hooks/useResizeHandles";
+import { useOutsideClick } from "../hooks/useOutsideClick";
 
 /** Convert stored text to HTML for display. Plain text gets \n→<br>; HTML passes through. */
 function textToHtml(text: string): string {
   if (!text) return "";
-  // If it already contains HTML tags, return as-is
   if (/<[a-z][\s\S]*?>/i.test(text)) return text;
-  // Plain text: escape entities and convert newlines
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br>");
-}
-
-/** Strip HTML tags to get plain text (for empty check) */
-function htmlToPlainText(html: string): string {
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  return tmp.innerText;
 }
 
 interface TextAnnotationProps {
@@ -46,7 +42,6 @@ export function TextAnnotationComponent({
 }: TextAnnotationProps) {
   const [editing, setEditing] = useState(() => autoEdit ?? false);
   const contentRef = useRef<HTMLDivElement>(null);
-  const didDragRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initializedRef = useRef(false);
 
@@ -54,12 +49,10 @@ export function TextAnnotationComponent({
   const pageH = dimension.height * zoom;
   const left = annotation.x * pageW;
   const top = annotation.y * pageH;
-  const minWidth = 50;
-  const width = Math.max(minWidth, annotation.width * pageW);
-  const height = Math.max(20, annotation.height * pageH);
+  const width = Math.max(MIN_TEXT_WIDTH, annotation.width * pageW);
+  const height = Math.max(MIN_TEXT_HEIGHT, annotation.height * pageH);
 
-  // When entering edit mode, set content via innerHTML (preserves formatting)
-  // and focus. Using innerHTML (not React children) avoids cursor resets.
+  // When entering edit mode, set content via innerHTML and focus
   useEffect(() => {
     if (editing && contentRef.current) {
       if (!initializedRef.current) {
@@ -92,13 +85,13 @@ export function TextAnnotationComponent({
     debounceRef.current = setTimeout(() => {
       onUpdate({
         text: el.innerHTML,
-        width: Math.max(minWidth, el.scrollWidth) / pageW,
-        height: Math.max(20, el.scrollHeight) / pageH,
+        width: Math.max(MIN_TEXT_WIDTH, el.scrollWidth) / pageW,
+        height: Math.max(MIN_TEXT_HEIGHT, el.scrollHeight) / pageH,
       });
     }, 1000);
   }, [pageW, pageH, onUpdate]);
 
-  const handleBlur = useCallback(() => {
+  const commitAndClose = useCallback(() => {
     setEditing(false);
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -112,8 +105,8 @@ export function TextAnnotationComponent({
     } else {
       onUpdate({
         text: el.innerHTML,
-        width: Math.max(minWidth, el.scrollWidth) / pageW,
-        height: Math.max(20, el.scrollHeight) / pageH,
+        width: Math.max(MIN_TEXT_WIDTH, el.scrollWidth) / pageW,
+        height: Math.max(MIN_TEXT_HEIGHT, el.scrollHeight) / pageH,
       });
     }
   }, [onDelete, onUpdate, pageW, pageH]);
@@ -125,7 +118,6 @@ export function TextAnnotationComponent({
         (e.target as HTMLElement).blur();
         return;
       }
-      // Cmd/Ctrl+B, I, U for inline formatting
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         if (e.key === "b") {
           e.preventDefault();
@@ -143,84 +135,25 @@ export function TextAnnotationComponent({
     []
   );
 
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent, corner: string) => {
-      e.preventDefault();
-      e.stopPropagation();
+  const { didDragRef, handleDragStart } = useDragToMove({
+    position: { x: annotation.x, y: annotation.y },
+    dimension,
+    zoom,
+    onSelect,
+    onUpdate: onUpdate as (updates: Record<string, unknown>) => void,
+    guardSelector: "highlight-resize-handle",
+    disabled: editing,
+  });
 
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startW = width;
-      const startH = height;
-
-      const handleMouseMove = (ev: MouseEvent) => {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-
-        let newW = startW;
-        let newH = startH;
-
-        if (corner.includes("r")) newW = Math.max(minWidth, startW + dx);
-        if (corner.includes("l")) newW = Math.max(minWidth, startW - dx);
-        if (corner.includes("b")) newH = Math.max(20, startH + dy);
-        if (corner.includes("t")) newH = Math.max(20, startH - dy);
-
-        const normW = newW / pageW;
-        const normH = newH / pageH;
-
-        let normX = annotation.x;
-        let normY = annotation.y;
-        if (corner.includes("l")) normX = annotation.x + annotation.width - normW;
-        if (corner.includes("t")) normY = annotation.y + annotation.height - normH;
-
-        onUpdate({ x: normX, y: normY, width: normW, height: normH });
-      };
-
-      const handleMouseUp = () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    },
-    [annotation, pageW, pageH, width, height, onUpdate]
-  );
-
-  const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      if (editing) return;
-      if ((e.target as HTMLElement).classList.contains("highlight-resize-handle")) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onSelect();
-      didDragRef.current = false;
-
-      const startMouseX = e.clientX;
-      const startMouseY = e.clientY;
-      const startAnnX = annotation.x;
-      const startAnnY = annotation.y;
-
-      const handleMouseMove = (ev: MouseEvent) => {
-        const dx = ev.clientX - startMouseX;
-        const dy = ev.clientY - startMouseY;
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) didDragRef.current = true;
-        onUpdate({
-          x: startAnnX + dx / pageW,
-          y: startAnnY + dy / pageH,
-        });
-      };
-
-      const handleMouseUp = () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    },
-    [editing, annotation.x, annotation.y, pageW, pageH, onUpdate, onSelect]
-  );
+  const { ResizeHandles } = useResizeHandles({
+    rect: { x: annotation.x, y: annotation.y, width: annotation.width, height: annotation.height },
+    pixelSize: { width, height },
+    dimension,
+    zoom,
+    onUpdate: onUpdate as (updates: Record<string, unknown>) => void,
+    minWidth: MIN_TEXT_WIDTH,
+    minHeight: MIN_TEXT_HEIGHT,
+  });
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -229,42 +162,18 @@ export function TextAnnotationComponent({
       onSelect();
       if (!editing) setEditing(true);
     },
-    [editing, onSelect]
+    [editing, onSelect, didDragRef]
   );
 
   // Close editing on outside click
-  useEffect(() => {
-    if (!editing) return;
-    function handleOutsideClick(e: MouseEvent) {
-      const target = e.target as Node;
-      if (contentRef.current?.contains(target)) return;
-      const wrapper = contentRef.current?.parentElement;
-      if (wrapper?.contains(target)) return;
-      // Don't close if clicking the annotation context menu
-      if ((target as HTMLElement).closest?.(".annotation-context-menu")) return;
-      e.stopPropagation();
-      setEditing(false);
-      const el = contentRef.current;
-      if (!el) return;
-      const plain = htmlToPlainText(el.innerHTML);
-      if (plain.trim() === "") {
-        onDelete();
-      } else {
-        onUpdate({
-          text: el.innerHTML,
-          width: Math.max(minWidth, el.scrollWidth) / pageW,
-          height: Math.max(20, el.scrollHeight) / pageH,
-        });
-      }
-    }
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleOutsideClick, true);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleOutsideClick, true);
-    };
-  }, [editing, onDelete, onUpdate, pageW, pageH]);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const outsideClickRefs = useMemo(() => [contentRef, wrapperRef], []);
+  useOutsideClick(
+    outsideClickRefs,
+    editing,
+    commitAndClose,
+    [".annotation-context-menu"],
+  );
 
   const fontStyle = {
     color: annotation.color,
@@ -286,13 +195,14 @@ export function TextAnnotationComponent({
 
   return (
     <div
+      ref={wrapperRef}
       className={`text-annotation${selected ? " annotation-selected" : ""}${editing ? " text-annotation-editing" : ""}`}
       style={{
         position: "absolute",
         left,
         top,
-        minWidth: minWidth,
-        minHeight: 20,
+        minWidth: MIN_TEXT_WIDTH,
+        minHeight: MIN_TEXT_HEIGHT,
         width: editing ? "auto" : width,
         height: editing ? "auto" : undefined,
         pointerEvents: "auto",
@@ -318,14 +228,14 @@ export function TextAnnotationComponent({
             outline: "none",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
-            minWidth: minWidth,
-            minHeight: 20,
+            minWidth: MIN_TEXT_WIDTH,
+            minHeight: MIN_TEXT_HEIGHT,
             lineHeight: 1.3,
             padding: "2px 4px",
           }}
           onInput={commitSize}
           onKeyDown={handleKeyDown}
-          onBlur={handleBlur}
+          onBlur={commitAndClose}
         />
       ) : (
         <div
@@ -341,14 +251,7 @@ export function TextAnnotationComponent({
           dangerouslySetInnerHTML={{ __html: textToHtml(annotation.text) || "\u00A0" }}
         />
       )}
-      {selected && !editing &&
-        ["tl", "tr", "bl", "br"].map((corner) => (
-          <div
-            key={corner}
-            className={`highlight-resize-handle highlight-resize-${corner}`}
-            onMouseDown={(e) => handleResizeStart(e, corner)}
-          />
-        ))}
+      {selected && !editing && <ResizeHandles />}
     </div>
   );
 }

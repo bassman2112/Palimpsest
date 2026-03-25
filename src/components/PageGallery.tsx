@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PdfDocument } from "../lib/pdf";
-import type { PageDimension, MergePage } from "../types";
+import type { Annotation, PageDimension, MergePage } from "../types";
 import { Thumbnail } from "./Thumbnail";
 import { ThumbnailContextMenu } from "./ThumbnailContextMenu";
 
@@ -10,6 +10,7 @@ interface PageGalleryProps {
   onPageClick: (pageNumber: number) => void;
   onDeletePage?: (pageNumber: number) => void;
   onDeletePages?: (pageNumbers: number[]) => void;
+  getPageAnnotations?: (pageNumber: number) => Annotation[];
   onReorderPage?: (from: number, to: number) => void;
   onReorderPages?: (pages: number[], insertBefore: number) => void;
   pendingSelectionRef?: React.RefObject<number[] | null>;
@@ -45,6 +46,7 @@ export function PageGallery({
   onPageClick,
   onDeletePage,
   onDeletePages,
+  getPageAnnotations,
   onReorderPage,
   onReorderPages,
   pendingSelectionRef,
@@ -544,6 +546,7 @@ export function PageGallery({
                   isDragging={dragState?.pageNumber === dim.pageNumber || (!!dragState?.multiDragPages && dragState.multiDragPages.includes(dim.pageNumber))}
                   isSelected={selectedPages.has(dim.pageNumber)}
                   size={GALLERY_THUMB_SIZE}
+                  annotations={getPageAnnotations?.(dim.pageNumber)}
                   onClick={(e) => handleNormalClick(dim.pageNumber, e)}
                   onDoubleClick={() => handleNormalDoubleClick(dim.pageNumber)}
                   onDeletePage={onDeletePage}

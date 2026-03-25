@@ -155,6 +155,36 @@ function App() {
     const unlistenNewTab = listen<void>("menu-new-tab", () => {
       handleNewTab();
     });
+    const unlistenSaveLocked = listen<void>("menu-save-locked", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.saveLocked();
+    });
+    const unlistenMerge = listen<void>("menu-merge", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.merge();
+    });
+    const unlistenToggleSidebar = listen<void>("menu-toggle-sidebar", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.toggleSidebar();
+    });
+    const unlistenToggleGallery = listen<void>("menu-toggle-gallery", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.toggleGallery();
+    });
+    const unlistenZoomIn = listen<void>("menu-zoom-in", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.zoomIn();
+    });
+    const unlistenZoomOut = listen<void>("menu-zoom-out", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.zoomOut();
+    });
+    const unlistenZoomReset = listen<void>("menu-zoom-reset", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.zoomReset();
+    });
+    const unlistenFitWidth = listen<void>("menu-fit-width", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.fitWidth();
+    });
+    const unlistenFitPage = listen<void>("menu-fit-page", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.fitPage();
+    });
+    const unlistenFind = listen<void>("menu-find", () => {
+      tabRefs.current.get(activeTabIdRef.current)?.find();
+    });
     return () => {
       unlistenOpen.then((f) => f());
       unlistenRecent.then((f) => f());
@@ -163,6 +193,16 @@ function App() {
       unlistenPrint.then((f) => f());
       unlistenCloseFile.then((f) => f());
       unlistenNewTab.then((f) => f());
+      unlistenSaveLocked.then((f) => f());
+      unlistenMerge.then((f) => f());
+      unlistenToggleSidebar.then((f) => f());
+      unlistenToggleGallery.then((f) => f());
+      unlistenZoomIn.then((f) => f());
+      unlistenZoomOut.then((f) => f());
+      unlistenZoomReset.then((f) => f());
+      unlistenFitWidth.then((f) => f());
+      unlistenFitPage.then((f) => f());
+      unlistenFind.then((f) => f());
     };
   }, [handleCloseTab, handleNewTab]);
 

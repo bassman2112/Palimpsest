@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PdfDocument } from "../lib/pdf";
-import type { PageDimension } from "../types";
+import type { Annotation, PageDimension } from "../types";
 import { Thumbnail } from "./Thumbnail";
 import { ThumbnailContextMenu } from "./ThumbnailContextMenu";
 
@@ -8,6 +8,7 @@ interface ThumbnailSidebarProps {
   pdfDoc: PdfDocument;
   pageDimensions: PageDimension[];
   currentPage: number;
+  getPageAnnotations?: (pageNumber: number) => Annotation[];
   onPageClick: (pageNumber: number) => void;
   onDeletePage?: (pageNumber: number) => void;
   onReorderPage?: (from: number, to: number) => void;
@@ -23,6 +24,7 @@ export function ThumbnailSidebar({
   pdfDoc,
   pageDimensions,
   currentPage,
+  getPageAnnotations,
   onPageClick,
   onDeletePage,
   onReorderPage,
@@ -285,6 +287,7 @@ export function ThumbnailSidebar({
           dimension={dim}
           isActive={dim.pageNumber === currentPage}
           isDragging={dragState?.pageNumber === dim.pageNumber}
+          annotations={getPageAnnotations?.(dim.pageNumber)}
           onClick={() => {
             if (!dragState) onPageClick(dim.pageNumber);
           }}

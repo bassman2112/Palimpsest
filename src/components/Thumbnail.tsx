@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { PdfDocument, PdfRenderTask } from "../lib/pdf";
 import { getEngine } from "../lib/pdf";
-import type { PageDimension } from "../types";
+import type { Annotation, PageDimension } from "../types";
 
 const THUMB_WIDTH = 150;
 
@@ -13,6 +13,7 @@ interface ThumbnailProps {
   isSelected?: boolean;
   size?: number;
   label?: string;
+  annotations?: Annotation[];
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onDeletePage?: (pageNumber: number) => void;
@@ -21,7 +22,7 @@ interface ThumbnailProps {
   onPointerDown?: (pageNumber: number, e: React.PointerEvent) => void;
 }
 
-export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected, size, label, onClick, onDoubleClick, onDeletePage, onDeleteMergePage, onContextMenu, onPointerDown }: ThumbnailProps) {
+export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected, size, label, annotations, onClick, onDoubleClick, onDeletePage, onDeleteMergePage, onContextMenu, onPointerDown }: ThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<PdfRenderTask | null>(null);
@@ -91,6 +92,181 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected,
           ref={canvasRef}
           style={{ width: thumbWidth, height: thumbHeight }}
         />
+        {annotations && annotations.length > 0 && (
+          <div
+            className="thumbnail-annotations"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: thumbWidth,
+              height: thumbHeight,
+              pointerEvents: "none",
+              overflow: "hidden",
+            }}
+          >
+            {annotations.map((ann) => {
+              if (ann.type === "highlight") {
+                return (
+                  <div
+                    key={ann.id}
+                    style={{
+                      position: "absolute",
+                      left: ann.x * thumbWidth,
+                      top: ann.y * thumbHeight,
+                      width: ann.width * thumbWidth,
+                      height: ann.height * thumbHeight,
+                      backgroundColor: ann.color,
+                      opacity: 0.35,
+                    }}
+                  />
+                );
+              }
+              if (ann.type === "underline" || ann.type === "strikethrough") {
+                const lineY = ann.type === "strikethrough" ? 0.5 : 1;
+                return (
+                  <div
+                    key={ann.id}
+                    style={{
+                      position: "absolute",
+                      left: ann.x * thumbWidth,
+                      top: ann.y * thumbHeight,
+                      width: ann.width * thumbWidth,
+                      height: ann.height * thumbHeight,
+                    }}
+                  >
+                    <div style={{
+                      position: "absolute",
+                      left: 0,
+                      top: `${lineY * 100}%`,
+                      width: "100%",
+                      height: 1,
+                      backgroundColor: ann.color,
+                      opacity: 0.8,
+                    }} />
+                  </div>
+                );
+              }
+              if (ann.type === "sticky-note") {
+                return (
+                  <div
+                    key={ann.id}
+                    style={{
+                      position: "absolute",
+                      left: ann.x * thumbWidth - 5,
+                      top: ann.y * thumbHeight - 5,
+                      width: 10,
+                      height: 10,
+                      backgroundColor: ann.color,
+                      borderRadius: 2,
+                      border: "1px solid rgba(0,0,0,0.3)",
+                    }}
+                  />
+                );
+              }
+              if (ann.type === "signature") {
+                return (
+                  <img
+                    key={ann.id}
+                    src={ann.imageData}
+                    style={{
+                      position: "absolute",
+                      left: ann.x * thumbWidth,
+                      top: ann.y * thumbHeight,
+                      width: ann.width * thumbWidth,
+                      height: ann.height * thumbHeight,
+                      opacity: 0.8,
+                    }}
+                  />
+                );
+              }
+              if (ann.type === "ink") {
+                const sw = Math.max(1, ann.strokeWidth * scale * 0.5);
+                return (
+                  <svg
+                    key={ann.id}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: thumbWidth,
+                      height: thumbHeight,
+                    }}
+                  >
+                    {ann.paths.map((path, pi) => (
+                      <polyline
+                        key={pi}
+                        points={path.map((pt) => `${pt.x * thumbWidth},${pt.y * thumbHeight}`).join(" ")}
+                        fill="none"
+                        stroke={ann.color}
+                        strokeWidth={sw}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ))}
+                  </svg>
+                );
+              }
+              if (ann.type === "shape") {
+                const x1 = ann.x1 * thumbWidth;
+                const y1 = ann.y1 * thumbHeight;
+                const x2 = ann.x2 * thumbWidth;
+                const y2 = ann.y2 * thumbHeight;
+                const sw = Math.max(1, ann.strokeWidth * scale * 0.5);
+                const minX = Math.min(x1, x2);
+                const minY = Math.min(y1, y2);
+                const w = Math.abs(x2 - x1);
+                const h = Math.abs(y2 - y1);
+                return (
+                  <svg
+                    key={ann.id}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: thumbWidth,
+                      height: thumbHeight,
+                    }}
+                  >
+                    {ann.shape === "rectangle" && (
+                      <rect x={minX} y={minY} width={w} height={h} fill="none" stroke={ann.color} strokeWidth={sw} />
+                    )}
+                    {ann.shape === "ellipse" && (
+                      <ellipse cx={minX + w / 2} cy={minY + h / 2} rx={w / 2} ry={h / 2} fill="none" stroke={ann.color} strokeWidth={sw} />
+                    )}
+                    {(ann.shape === "line" || ann.shape === "arrow") && (
+                      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={ann.color} strokeWidth={sw} />
+                    )}
+                  </svg>
+                );
+              }
+              if (ann.type === "text") {
+                const fontSize = Math.max(4, ann.fontSize * scale);
+                return (
+                  <div
+                    key={ann.id}
+                    style={{
+                      position: "absolute",
+                      left: ann.x * thumbWidth,
+                      top: ann.y * thumbHeight,
+                      width: ann.width * thumbWidth,
+                      height: ann.height * thumbHeight,
+                      backgroundColor: ann.backgroundColor !== "transparent" ? ann.backgroundColor : undefined,
+                      color: ann.color,
+                      fontSize,
+                      fontFamily: ann.fontFamily,
+                      fontWeight: ann.bold ? "bold" : undefined,
+                      fontStyle: ann.italic ? "italic" : undefined,
+                      overflow: "hidden",
+                      lineHeight: 1.2,
+                    }}
+                  />
+                );
+              }
+              return null;
+            })}
+          </div>
+        )}
         {isSelected && <div className="thumbnail-select-check">&#10003;</div>}
         {onDeleteMergePage && (
           <button

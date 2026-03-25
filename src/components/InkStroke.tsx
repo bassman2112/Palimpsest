@@ -1,5 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { InkAnnotation, PageDimension } from "../types";
+import { MIN_RESIZE_DIM, INK_STROKE_PADDING } from "../constants";
+import { useDragToMove } from "../hooks/useDragToMove";
 
 interface InkStrokeProps {
   annotation: InkAnnotation;
@@ -20,78 +22,39 @@ export function InkStroke({
   onUpdate,
   onContextMenu,
 }: InkStrokeProps) {
-  const didDragRef = useRef(false);
-
   const pageW = dimension.width * zoom;
   const pageH = dimension.height * zoom;
 
-  // Convert normalized bbox to pixel coords
   const left = annotation.x * pageW;
   const top = annotation.y * pageH;
   const width = annotation.width * pageW;
   const height = annotation.height * pageH;
 
-  // Build SVG path strings from normalized points → pixel coords
-  const svgPaths = annotation.paths.map((stroke) => {
-    if (stroke.length < 2) return "";
-    const points = stroke.map((pt) => ({
-      x: pt.x * pageW - left,
-      y: pt.y * pageH - top,
-    }));
-    return (
-      `M ${points[0].x} ${points[0].y}` +
-      points
-        .slice(1)
-        .map((pt) => ` L ${pt.x} ${pt.y}`)
-        .join("")
-    );
-  });
+  // Memoize start paths for drag translation
+  const pathsRef = useRef(annotation.paths);
+  pathsRef.current = annotation.paths;
 
-  const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      if ((e.target as HTMLElement).classList.contains("highlight-resize-handle")) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onSelect();
-      didDragRef.current = false;
-
-      const startMouseX = e.clientX;
-      const startMouseY = e.clientY;
-      const startAnnX = annotation.x;
-      const startAnnY = annotation.y;
-      const startPaths = annotation.paths;
-
-      const handleMouseMove = (ev: MouseEvent) => {
-        const dx = ev.clientX - startMouseX;
-        const dy = ev.clientY - startMouseY;
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) didDragRef.current = true;
-        const dxNorm = dx / pageW;
-        const dyNorm = dy / pageH;
-        // Move all points by the delta
-        const newPaths = startPaths.map((stroke) =>
-          stroke.map((pt) => ({
-            x: pt.x + dxNorm,
-            y: pt.y + dyNorm,
-          }))
-        );
-        onUpdate({
-          x: startAnnX + dxNorm,
-          y: startAnnY + dyNorm,
-          paths: newPaths,
-        });
-      };
-
-      const handleMouseUp = () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
+  const computeExtraUpdates = useCallback(
+    (dxNorm: number, dyNorm: number) => {
+      const newPaths = pathsRef.current.map((stroke) =>
+        stroke.map((pt) => ({ x: pt.x + dxNorm, y: pt.y + dyNorm }))
+      );
+      return { paths: newPaths };
     },
-    [annotation.x, annotation.y, annotation.paths, pageW, pageH, onUpdate, onSelect]
+    []
   );
 
+  const { didDragRef, handleDragStart } = useDragToMove({
+    position: { x: annotation.x, y: annotation.y },
+    dimension,
+    zoom,
+    onSelect,
+    onUpdate: onUpdate as (updates: Record<string, unknown>) => void,
+    computeExtraUpdates,
+    guardSelector: "highlight-resize-handle",
+  });
+
+  // Ink resize scales all points relative to bounding box
   const handleResizeStart = useCallback(
     (e: React.MouseEvent, corner: string) => {
       e.preventDefault();
@@ -114,10 +77,10 @@ export function InkStroke({
         let newW = startW;
         let newH = startH;
 
-        if (corner.includes("r")) newW = Math.max(10, startW + dx);
-        if (corner.includes("l")) newW = Math.max(10, startW - dx);
-        if (corner.includes("b")) newH = Math.max(10, startH + dy);
-        if (corner.includes("t")) newH = Math.max(10, startH - dy);
+        if (corner.includes("r")) newW = Math.max(MIN_RESIZE_DIM, startW + dx);
+        if (corner.includes("l")) newW = Math.max(MIN_RESIZE_DIM, startW - dx);
+        if (corner.includes("b")) newH = Math.max(MIN_RESIZE_DIM, startH + dy);
+        if (corner.includes("t")) newH = Math.max(MIN_RESIZE_DIM, startH - dy);
 
         const normW = newW / pageW;
         const normH = newH / pageH;
@@ -127,7 +90,6 @@ export function InkStroke({
         if (corner.includes("l")) normX = startAnnX + startAnnW - normW;
         if (corner.includes("t")) normY = startAnnY + startAnnH - normH;
 
-        // Scale all points relative to the new bounding box
         const scaleX = normW / startAnnW;
         const scaleY = normH / startAnnH;
         const newPaths = startPaths.map((stroke) =>
@@ -151,8 +113,20 @@ export function InkStroke({
     [annotation, width, height, pageW, pageH, onUpdate]
   );
 
-  // Add padding so strokes at edges are visible
-  const pad = 4;
+  // Build SVG path strings
+  const svgPaths = annotation.paths.map((stroke) => {
+    if (stroke.length < 2) return "";
+    const points = stroke.map((pt) => ({
+      x: pt.x * pageW - left,
+      y: pt.y * pageH - top,
+    }));
+    return (
+      `M ${points[0].x} ${points[0].y}` +
+      points.slice(1).map((pt) => ` L ${pt.x} ${pt.y}`).join("")
+    );
+  });
+
+  const pad = INK_STROKE_PADDING;
 
   return (
     <div

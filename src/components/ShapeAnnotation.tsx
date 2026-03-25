@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import type { ShapeAnnotation as ShapeAnnotationType, PageDimension } from "../types";
+import { DRAG_THRESHOLD, SHAPE_PADDING } from "../constants";
 
 interface ShapeAnnotationProps {
   annotation: ShapeAnnotationType;
@@ -25,13 +26,11 @@ export function ShapeAnnotation({
   const pageW = dimension.width * zoom;
   const pageH = dimension.height * zoom;
 
-  // Convert normalized coords to pixel
   const px1 = annotation.x1 * pageW;
   const py1 = annotation.y1 * pageH;
   const px2 = annotation.x2 * pageW;
   const py2 = annotation.y2 * pageH;
 
-  // Bounding box (for rectangle/ellipse, min/max; for line/arrow, same)
   const minX = Math.min(px1, px2);
   const minY = Math.min(py1, py2);
   const maxX = Math.max(px1, px2);
@@ -39,16 +38,15 @@ export function ShapeAnnotation({
   const bboxW = maxX - minX;
   const bboxH = maxY - minY;
 
-  const pad = 8; // padding so stroke/handles at edges are visible
-
+  const pad = SHAPE_PADDING;
   const isLine = annotation.shape === "line" || annotation.shape === "arrow";
 
-  // SVG coords relative to padded container
   const svgX1 = px1 - minX + pad;
   const svgY1 = py1 - minY + pad;
   const svgX2 = px2 - minX + pad;
   const svgY2 = py2 - minY + pad;
 
+  // Shape drag moves all four endpoints
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
       if (
@@ -70,7 +68,7 @@ export function ShapeAnnotation({
       const handleMouseMove = (ev: MouseEvent) => {
         const dx = ev.clientX - startMouseX;
         const dy = ev.clientY - startMouseY;
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) didDragRef.current = true;
+        if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) didDragRef.current = true;
         const dxNorm = dx / pageW;
         const dyNorm = dy / pageH;
         onUpdate({
@@ -92,7 +90,6 @@ export function ShapeAnnotation({
     [annotation.x1, annotation.y1, annotation.x2, annotation.y2, pageW, pageH, onUpdate, onSelect]
   );
 
-  // Corner resize for rectangle/ellipse
   const handleCornerResize = useCallback(
     (e: React.MouseEvent, corner: string) => {
       e.preventDefault();
@@ -128,7 +125,6 @@ export function ShapeAnnotation({
     [annotation.x1, annotation.y1, annotation.x2, annotation.y2, pageW, pageH, onUpdate]
   );
 
-  // Endpoint drag for line/arrow
   const handleEndpointDrag = useCallback(
     (e: React.MouseEvent, endpoint: 1 | 2) => {
       e.preventDefault();
@@ -201,7 +197,6 @@ export function ShapeAnnotation({
       );
     }
 
-    // line or arrow
     return (
       <>
         <defs>
@@ -262,7 +257,6 @@ export function ShapeAnnotation({
         {renderShape()}
       </svg>
 
-      {/* Resize handles */}
       {selected && !isLine &&
         ["tl", "tr", "bl", "br"].map((corner) => (
           <div
@@ -272,7 +266,6 @@ export function ShapeAnnotation({
           />
         ))}
 
-      {/* Endpoint handles for line/arrow */}
       {selected && isLine && (
         <>
           <div

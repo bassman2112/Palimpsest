@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { StickyNoteAnnotation, PageDimension } from "../types";
+import { useDragToMove } from "../hooks/useDragToMove";
+import { useOutsideClick } from "../hooks/useOutsideClick";
 
 interface StickyNoteProps {
   annotation: StickyNoteAnnotation;
@@ -23,13 +25,11 @@ export function StickyNote({
   onDelete,
   onContextMenu,
 }: StickyNoteProps) {
-  // Auto-open for newly created (empty text) notes
   const [open, setOpen] = useState(() => annotation.text === "");
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
   const popoverRef = useRef<HTMLDivElement>(null);
   const iconRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const didDragRef = useRef(false);
 
   const left = annotation.x * dimension.width * zoom;
   const top = annotation.y * dimension.height * zoom;
@@ -56,38 +56,21 @@ export function StickyNote({
     }
   }, [open]);
 
-  // Close popover on outside click or Escape
+  // Close popover on outside click
+  const handleClosePopover = useCallback(() => setOpen(false), []);
+  useOutsideClick([popoverRef, iconRef], open, handleClosePopover);
+
+  // Close on Escape
   useEffect(() => {
     if (!open) return;
-
-    function handleOutsideClick(e: MouseEvent) {
-      const target = e.target as Node;
-      if (popoverRef.current?.contains(target)) return;
-      if (iconRef.current?.contains(target)) return;
-      // Stop propagation so the overlay doesn't create a new annotation
-      e.stopPropagation();
-      setOpen(false);
-    }
-
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.stopPropagation();
         setOpen(false);
       }
     }
-
-    // Delay adding listener so the current click doesn't immediately close it
-    const timer = setTimeout(() => {
-      // Use capture phase so we intercept before the overlay's onMouseDown
-      document.addEventListener("mousedown", handleOutsideClick, true);
-    }, 0);
     document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleOutsideClick, true);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open]);
 
   // Close popover on scroll (position would be stale)
@@ -96,47 +79,18 @@ export function StickyNote({
     function handleScroll() {
       setOpen(false);
     }
-    // Capture phase to catch scroll on any container
     document.addEventListener("scroll", handleScroll, true);
     return () => document.removeEventListener("scroll", handleScroll, true);
   }, [open]);
 
-  const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      // Don't start drag if popover is open
-      if (open) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onSelect();
-      didDragRef.current = false;
-
-      const startMouseX = e.clientX;
-      const startMouseY = e.clientY;
-      const startAnnX = annotation.x;
-      const startAnnY = annotation.y;
-      const pageW = dimension.width * zoom;
-      const pageH = dimension.height * zoom;
-
-      const handleMouseMove = (ev: MouseEvent) => {
-        const dx = ev.clientX - startMouseX;
-        const dy = ev.clientY - startMouseY;
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) didDragRef.current = true;
-        onUpdate({
-          x: startAnnX + dx / pageW,
-          y: startAnnY + dy / pageH,
-        });
-      };
-
-      const handleMouseUp = () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    },
-    [open, annotation.x, annotation.y, dimension, zoom, onUpdate, onSelect]
-  );
+  const { didDragRef, handleDragStart } = useDragToMove({
+    position: { x: annotation.x, y: annotation.y },
+    dimension,
+    zoom,
+    onSelect,
+    onUpdate: onUpdate as (updates: Record<string, unknown>) => void,
+    disabled: open,
+  });
 
   return (
     <div
