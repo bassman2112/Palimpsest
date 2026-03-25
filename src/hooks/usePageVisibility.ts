@@ -98,8 +98,14 @@ export function usePageVisibility({ zoom, totalPages }: UsePageVisibilityOptions
     if (!container) return;
     const el = container.querySelector(`[data-page-number="${pageNumber}"]`) as HTMLElement | null;
     if (el) {
+      // Set current page immediately so UI updates without waiting for scroll events
+      setCurrentPage(pageNumber);
+      // Use getBoundingClientRect for reliable cross-platform positioning
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const scrollTop = container.scrollTop + (elRect.top - containerRect.top);
       container.scrollTo({
-        top: el.offsetTop - container.offsetTop,
+        top: scrollTop,
         behavior: "smooth",
       });
     }

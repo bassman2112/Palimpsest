@@ -22,8 +22,9 @@ A free, open-source PDF viewer and editor. View, annotate, organize pages, and m
   - Font size, font family (sans-serif, serif, monospace), text color
   - Optional background color (7 semi-transparent color options)
 - **Notes** — click to place, editable popover, drag to reposition
+- **Shapes** — rectangle, ellipse, line, arrow with resize handles and recolor via right-click
 - **Underline & Strikethrough** — drag to create, recolor via right-click
-- **Freehand drawing** — multi-stroke ink annotations
+- **Freehand drawing** — multi-stroke ink annotations, configurable stroke width
 - **Signatures & initials** — draw freehand or type (3 cursive fonts), saved for reuse
 - All annotations are **draggable and resizable** after placement
 - **Undo / Redo** for all annotation actions (Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z)
