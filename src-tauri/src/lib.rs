@@ -24,6 +24,32 @@ pub struct AnnotationData {
     pub height: f64,
     pub text: String,
     pub color: [f64; 3],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paths: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stroke_width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shape: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x1: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y1: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x2: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y2: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bold: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub italic: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underline: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<String>,
 }
 
 #[tauri::command]
@@ -123,6 +149,13 @@ fn obj_to_f64(obj: &Object) -> Result<f64, String> {
 
 const PALIMPSEST_MARKER: &[u8] = b"palimpsest";
 
+/// Escape parentheses and backslashes for PDF string literals
+fn pdf_escape_text(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('(', "\\(")
+        .replace(')', "\\)")
+}
+
 /// Check if an annotation dict was created by Palimpsest (has our NM marker)
 fn is_palimpsest_annotation(doc: &Document, annot_obj: &Object) -> bool {
     let dict = match annot_obj {
@@ -199,7 +232,10 @@ fn save_annotations(path: String, annotations: Vec<AnnotationData>) -> Result<()
         let mut annot_refs = preserved_refs;
 
         for ann in &page_annots {
-            let mut annot_dict = if ann.annotation_type == "highlight" {
+            let mut annot_dict = if ann.annotation_type == "highlight"
+                || ann.annotation_type == "underline"
+                || ann.annotation_type == "strikethrough"
+            {
                 let pdf_x = x0 + ann.x * page_w;
                 let pdf_y2 = y1 - ann.y * page_h;
                 let pdf_x2 = x0 + (ann.x + ann.width) * page_w;
@@ -229,9 +265,15 @@ fn save_annotations(path: String, annotations: Vec<AnnotationData>) -> Result<()
                     Object::Real(ann.color[2] as f32),
                 ];
 
+                let subtype = match ann.annotation_type.as_str() {
+                    "underline" => b"Underline".to_vec(),
+                    "strikethrough" => b"StrikeOut".to_vec(),
+                    _ => b"Highlight".to_vec(),
+                };
+
                 let mut dict = Dictionary::new();
                 dict.set("Type", Object::Name(b"Annot".to_vec()));
-                dict.set("Subtype", Object::Name(b"Highlight".to_vec()));
+                dict.set("Subtype", Object::Name(subtype));
                 dict.set("Rect", Object::Array(rect));
                 dict.set("QuadPoints", Object::Array(quad_points));
                 dict.set("C", Object::Array(color));
@@ -355,15 +397,21 @@ fn read_annotations(path: String) -> Result<Vec<AnnotationData>, String> {
             };
 
             match subtype.as_str() {
-                "Highlight" => {
+                "Highlight" | "Underline" | "StrikeOut" => {
                     // Convert PDF coords back to normalized (flip Y)
                     let norm_x = (rect.0 - x0) / page_w;
                     let norm_y = (y1 - rect.3) / page_h; // rect.3 is top in PDF
                     let norm_w = (rect.2 - rect.0) / page_w;
                     let norm_h = (rect.3 - rect.1) / page_h;
 
+                    let annotation_type = match subtype.as_str() {
+                        "Underline" => "underline",
+                        "StrikeOut" => "strikethrough",
+                        _ => "highlight",
+                    };
+
                     result.push(AnnotationData {
-                        annotation_type: "highlight".into(),
+                        annotation_type: annotation_type.into(),
                         page_number: *page_num as usize,
                         x: norm_x,
                         y: norm_y,
@@ -371,6 +419,244 @@ fn read_annotations(path: String) -> Result<Vec<AnnotationData>, String> {
                         height: norm_h,
                         text: String::new(),
                         color,
+                        paths: None,
+                        stroke_width: None,
+                        shape: None,
+                        x1: None, y1: None, x2: None, y2: None,
+                        font_size: None, font_family: None, bold: None, italic: None, underline: None, background_color: None,
+                    });
+                }
+                "Ink" => {
+                    // Only read back our own annotations
+                    if !is_palimpsest_annotation(&doc, &annot_obj) {
+                        continue;
+                    }
+
+                    let norm_x = (rect.0 - x0) / page_w;
+                    let norm_y = (y1 - rect.3) / page_h;
+                    let norm_w = (rect.2 - rect.0) / page_w;
+                    let norm_h = (rect.3 - rect.1) / page_h;
+
+                    // Read InkList
+                    let ink_paths = match annot_dict.get(b"InkList") {
+                        Ok(Object::Array(ink_list)) => {
+                            let mut paths: Vec<Vec<f64>> = Vec::new();
+                            for entry in ink_list {
+                                let arr = match resolve_object(&doc, entry) {
+                                    Ok(Object::Array(a)) => a,
+                                    _ => continue,
+                                };
+                                // Convert PDF coords to normalized
+                                let mut flat: Vec<f64> = Vec::new();
+                                let mut i = 0;
+                                while i + 1 < arr.len() {
+                                    let px = obj_to_f64(&arr[i]).unwrap_or(0.0);
+                                    let py = obj_to_f64(&arr[i + 1]).unwrap_or(0.0);
+                                    flat.push((px - x0) / page_w);
+                                    flat.push((y1 - py) / page_h);
+                                    i += 2;
+                                }
+                                paths.push(flat);
+                            }
+                            Some(paths)
+                        }
+                        _ => None,
+                    };
+
+                    let stroke_width = match annot_dict.get(b"BS") {
+                        Ok(Object::Dictionary(bs)) => {
+                            match bs.get(b"W") {
+                                Ok(w) => Some(obj_to_f64(w).unwrap_or(2.0)),
+                                _ => Some(2.0),
+                            }
+                        }
+                        _ => Some(2.0),
+                    };
+
+                    result.push(AnnotationData {
+                        annotation_type: "ink".into(),
+                        page_number: *page_num as usize,
+                        x: norm_x,
+                        y: norm_y,
+                        width: norm_w,
+                        height: norm_h,
+                        text: String::new(),
+                        color,
+                        paths: ink_paths,
+                        stroke_width,
+                        shape: None,
+                        x1: None, y1: None, x2: None, y2: None,
+                        font_size: None, font_family: None, bold: None, italic: None, underline: None, background_color: None,
+                    });
+                }
+                "Square" | "Circle" => {
+                    if !is_palimpsest_annotation(&doc, &annot_obj) {
+                        continue;
+                    }
+                    let norm_x1 = (rect.0 - x0) / page_w;
+                    let norm_y1 = (y1 - rect.3) / page_h;
+                    let norm_x2 = (rect.2 - x0) / page_w;
+                    let norm_y2 = (y1 - rect.1) / page_h;
+                    let shape_kind = if subtype == "Square" { "rectangle" } else { "ellipse" };
+                    let stroke_w = match annot_dict.get(b"BS") {
+                        Ok(Object::Dictionary(bs)) => {
+                            match bs.get(b"W") {
+                                Ok(w) => obj_to_f64(w).unwrap_or(2.0),
+                                _ => 2.0,
+                            }
+                        }
+                        _ => 2.0,
+                    };
+                    result.push(AnnotationData {
+                        annotation_type: "shape".into(),
+                        page_number: *page_num as usize,
+                        x: 0.0, y: 0.0, width: 0.0, height: 0.0,
+                        text: String::new(),
+                        color,
+                        paths: None,
+                        stroke_width: Some(stroke_w),
+                        shape: Some(shape_kind.into()),
+                        x1: Some(norm_x1), y1: Some(norm_y1),
+                        x2: Some(norm_x2), y2: Some(norm_y2),
+                        font_size: None, font_family: None, bold: None, italic: None, underline: None, background_color: None,
+                    });
+                }
+                "Line" => {
+                    if !is_palimpsest_annotation(&doc, &annot_obj) {
+                        continue;
+                    }
+                    // Read L array for endpoints
+                    let (lx1, ly1, lx2, ly2) = match annot_dict.get(b"L") {
+                        Ok(Object::Array(arr)) if arr.len() >= 4 => {
+                            (
+                                obj_to_f64(&arr[0]).unwrap_or(0.0),
+                                obj_to_f64(&arr[1]).unwrap_or(0.0),
+                                obj_to_f64(&arr[2]).unwrap_or(0.0),
+                                obj_to_f64(&arr[3]).unwrap_or(0.0),
+                            )
+                        }
+                        _ => (rect.0, rect.1, rect.2, rect.3),
+                    };
+                    let norm_x1 = (lx1 - x0) / page_w;
+                    let norm_y1 = (y1 - ly1) / page_h;
+                    let norm_x2 = (lx2 - x0) / page_w;
+                    let norm_y2 = (y1 - ly2) / page_h;
+                    // Check LE for arrow
+                    let is_arrow = match annot_dict.get(b"LE") {
+                        Ok(Object::Array(le)) => {
+                            le.iter().any(|o| matches!(o, Object::Name(n) if n != b"None"))
+                        }
+                        _ => false,
+                    };
+                    let shape_kind = if is_arrow { "arrow" } else { "line" };
+                    let stroke_w = match annot_dict.get(b"BS") {
+                        Ok(Object::Dictionary(bs)) => {
+                            match bs.get(b"W") {
+                                Ok(w) => obj_to_f64(w).unwrap_or(2.0),
+                                _ => 2.0,
+                            }
+                        }
+                        _ => 2.0,
+                    };
+                    result.push(AnnotationData {
+                        annotation_type: "shape".into(),
+                        page_number: *page_num as usize,
+                        x: 0.0, y: 0.0, width: 0.0, height: 0.0,
+                        text: String::new(),
+                        color,
+                        paths: None,
+                        stroke_width: Some(stroke_w),
+                        shape: Some(shape_kind.into()),
+                        x1: Some(norm_x1), y1: Some(norm_y1),
+                        x2: Some(norm_x2), y2: Some(norm_y2),
+                        font_size: None, font_family: None, bold: None, italic: None, underline: None, background_color: None,
+                    });
+                }
+                "FreeText" => {
+                    let text = match annot_dict.get(b"Contents") {
+                        Ok(Object::String(bytes, _)) => String::from_utf8_lossy(bytes).to_string(),
+                        _ => String::new(),
+                    };
+
+                    let norm_x = (rect.0 - x0) / page_w;
+                    let norm_y = (y1 - rect.3) / page_h;
+                    let norm_w = (rect.2 - rect.0) / page_w;
+                    let norm_h = (rect.3 - rect.1) / page_h;
+
+                    // Parse DA string for font info: "/FontName size Tf r g b rg"
+                    let (font_size, font_family, bold, italic, da_color) = match annot_dict.get(b"DA") {
+                        Ok(Object::String(bytes, _)) => {
+                            let da_str = String::from_utf8_lossy(bytes).to_string();
+                            let mut fs = 16.0_f64;
+                            let mut ff = "sans-serif";
+                            let mut b = false;
+                            let mut it = false;
+                            let mut dc: Option<[f64; 3]> = None;
+
+                            // Parse font name and size from "/{font} {size} Tf"
+                            if let Some(tf_pos) = da_str.find("Tf") {
+                                let before = da_str[..tf_pos].trim();
+                                let parts: Vec<&str> = before.split_whitespace().collect();
+                                if parts.len() >= 2 {
+                                    if let Ok(size) = parts[parts.len() - 1].parse::<f64>() {
+                                        fs = size;
+                                    }
+                                    let font_name = parts[parts.len() - 2].trim_start_matches('/');
+                                    let (f, bb, ii) = parse_font_family_from_name(font_name);
+                                    ff = f;
+                                    b = bb;
+                                    it = ii;
+                                }
+                            }
+
+                            // Parse color from "r g b rg"
+                            if let Some(rg_pos) = da_str.find("rg") {
+                                let before = da_str[..rg_pos].trim();
+                                // Find last 3 numbers before "rg"
+                                let parts: Vec<&str> = before.split_whitespace().collect();
+                                if parts.len() >= 3 {
+                                    let r = parts[parts.len() - 3].parse::<f64>().unwrap_or(0.0);
+                                    let g = parts[parts.len() - 2].parse::<f64>().unwrap_or(0.0);
+                                    let bv = parts[parts.len() - 1].parse::<f64>().unwrap_or(0.0);
+                                    dc = Some([r, g, bv]);
+                                }
+                            }
+
+                            (Some(fs), Some(ff.to_string()), Some(b), Some(it), dc)
+                        }
+                        _ => (None, None, None, None, None),
+                    };
+
+                    let final_color = da_color.unwrap_or(color);
+
+                    let underline = match annot_dict.get(b"PalUnderline") {
+                        Ok(Object::Boolean(b)) => Some(*b),
+                        _ => None,
+                    };
+                    let background_color = match annot_dict.get(b"PalBgColor") {
+                        Ok(Object::String(bytes, _)) => Some(String::from_utf8_lossy(bytes).to_string()),
+                        _ => None,
+                    };
+
+                    result.push(AnnotationData {
+                        annotation_type: "text".into(),
+                        page_number: *page_num as usize,
+                        x: norm_x,
+                        y: norm_y,
+                        width: norm_w,
+                        height: norm_h,
+                        text,
+                        color: final_color,
+                        paths: None,
+                        stroke_width: None,
+                        shape: None,
+                        x1: None, y1: None, x2: None, y2: None,
+                        font_size,
+                        font_family,
+                        bold,
+                        italic,
+                        underline,
+                        background_color,
                     });
                 }
                 "Text" => {
@@ -392,6 +678,11 @@ fn read_annotations(path: String) -> Result<Vec<AnnotationData>, String> {
                         height: 0.0,
                         text,
                         color,
+                        paths: None,
+                        stroke_width: None,
+                        shape: None,
+                        x1: None, y1: None, x2: None, y2: None,
+                        font_size: None, font_family: None, bold: None, italic: None, underline: None, background_color: None,
                     });
                 }
                 _ => {} // Ignore other annotation types
@@ -570,6 +861,235 @@ fn save_locked(source: String, dest: String) -> Result<(), String> {
                         gs_name, r, g, b, rx, ry, w, h
                     ));
                 }
+            } else if subtype == b"Underline" || subtype == b"StrikeOut" {
+                // Flatten as a thin line
+                let rect = annot_dict.get(b"Rect")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) => parse_rect(arr).ok(),
+                        _ => None,
+                    });
+                let color = annot_dict.get(b"C")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) if arr.len() >= 3 => {
+                            let r = obj_to_f64(&arr[0]).unwrap_or(0.0);
+                            let g = obj_to_f64(&arr[1]).unwrap_or(0.0);
+                            let b_val = obj_to_f64(&arr[2]).unwrap_or(0.0);
+                            Some((r, g, b_val))
+                        }
+                        _ => None,
+                    });
+
+                if let (Some((rx, ry, rx2, ry2)), Some((r, g, b))) = (rect, color) {
+                    let line_y = if subtype == b"Underline" {
+                        ry // bottom of rect
+                    } else {
+                        (ry + ry2) / 2.0 // middle for strikethrough
+                    };
+                    extra_content.push_str(&format!(
+                        "q {} {} {} RG 2 w {} {} m {} {} l S Q\n",
+                        r, g, b, rx, line_y, rx2, line_y
+                    ));
+                }
+            } else if subtype == b"Ink" {
+                // Flatten ink: draw the strokes
+                let color = annot_dict.get(b"C")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) if arr.len() >= 3 => {
+                            let r = obj_to_f64(&arr[0]).unwrap_or(0.0);
+                            let g = obj_to_f64(&arr[1]).unwrap_or(0.0);
+                            let b_val = obj_to_f64(&arr[2]).unwrap_or(0.0);
+                            Some((r, g, b_val))
+                        }
+                        _ => None,
+                    });
+                let stroke_w = annot_dict.get(b"BS")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Dictionary(bs) => bs.get(b"W").ok().and_then(|w| obj_to_f64(w).ok()),
+                        _ => None,
+                    })
+                    .unwrap_or(2.0);
+
+                if let Some((r, g, b)) = color {
+                    if let Ok(Object::Array(ink_list)) = annot_dict.get(b"InkList") {
+                        extra_content.push_str(&format!(
+                            "q {} {} {} RG {} w 1 J 1 j\n",
+                            r, g, b, stroke_w
+                        ));
+                        for entry in ink_list {
+                            let arr = match entry {
+                                Object::Array(a) => a,
+                                _ => continue,
+                            };
+                            if arr.len() < 4 { continue; }
+                            let px = obj_to_f64(&arr[0]).unwrap_or(0.0);
+                            let py = obj_to_f64(&arr[1]).unwrap_or(0.0);
+                            extra_content.push_str(&format!("{} {} m\n", px, py));
+                            let mut i = 2;
+                            while i + 1 < arr.len() {
+                                let lx = obj_to_f64(&arr[i]).unwrap_or(0.0);
+                                let ly = obj_to_f64(&arr[i + 1]).unwrap_or(0.0);
+                                extra_content.push_str(&format!("{} {} l\n", lx, ly));
+                                i += 2;
+                            }
+                            extra_content.push_str("S\n");
+                        }
+                        extra_content.push_str("Q\n");
+                    }
+                }
+            } else if subtype == b"Square" {
+                // Flatten rectangle shape: stroke rect
+                let rect = annot_dict.get(b"Rect")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) => parse_rect(arr).ok(),
+                        _ => None,
+                    });
+                let color = annot_dict.get(b"C")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) if arr.len() >= 3 => {
+                            let r = obj_to_f64(&arr[0]).unwrap_or(0.0);
+                            let g = obj_to_f64(&arr[1]).unwrap_or(0.0);
+                            let b_val = obj_to_f64(&arr[2]).unwrap_or(0.0);
+                            Some((r, g, b_val))
+                        }
+                        _ => None,
+                    });
+                let stroke_w = annot_dict.get(b"BS")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Dictionary(bs) => bs.get(b"W").ok().and_then(|w| obj_to_f64(w).ok()),
+                        _ => None,
+                    })
+                    .unwrap_or(2.0);
+                if let (Some((rx, ry, rx2, ry2)), Some((r, g, b))) = (rect, color) {
+                    let w = rx2 - rx;
+                    let h = ry2 - ry;
+                    extra_content.push_str(&format!(
+                        "q {} {} {} RG {} w {} {} {} {} re S Q\n",
+                        r, g, b, stroke_w, rx, ry, w, h
+                    ));
+                }
+            } else if subtype == b"Circle" {
+                // Flatten ellipse shape: 4 cubic Bezier curves
+                let rect = annot_dict.get(b"Rect")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) => parse_rect(arr).ok(),
+                        _ => None,
+                    });
+                let color = annot_dict.get(b"C")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) if arr.len() >= 3 => {
+                            let r = obj_to_f64(&arr[0]).unwrap_or(0.0);
+                            let g = obj_to_f64(&arr[1]).unwrap_or(0.0);
+                            let b_val = obj_to_f64(&arr[2]).unwrap_or(0.0);
+                            Some((r, g, b_val))
+                        }
+                        _ => None,
+                    });
+                let stroke_w = annot_dict.get(b"BS")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Dictionary(bs) => bs.get(b"W").ok().and_then(|w| obj_to_f64(w).ok()),
+                        _ => None,
+                    })
+                    .unwrap_or(2.0);
+                if let (Some((rx, ry, rx2, ry2)), Some((r, g, b))) = (rect, color) {
+                    let cx = (rx + rx2) / 2.0;
+                    let cy = (ry + ry2) / 2.0;
+                    let a = (rx2 - rx) / 2.0; // semi-axis x
+                    let bv = (ry2 - ry) / 2.0; // semi-axis y
+                    let k: f64 = 0.5522847498;
+                    let ka = k * a;
+                    let kb = k * bv;
+                    extra_content.push_str(&format!(
+                        "q {} {} {} RG {} w\n\
+                         {} {} m\n\
+                         {} {} {} {} {} {} c\n\
+                         {} {} {} {} {} {} c\n\
+                         {} {} {} {} {} {} c\n\
+                         {} {} {} {} {} {} c\n\
+                         S Q\n",
+                        r, g, b, stroke_w,
+                        cx + a, cy,
+                        cx + a, cy + kb, cx + ka, cy + bv, cx, cy + bv,
+                        cx - ka, cy + bv, cx - a, cy + kb, cx - a, cy,
+                        cx - a, cy - kb, cx - ka, cy - bv, cx, cy - bv,
+                        cx + ka, cy - bv, cx + a, cy - kb, cx + a, cy
+                    ));
+                }
+            } else if subtype == b"Line" {
+                // Flatten line/arrow shape
+                let color = annot_dict.get(b"C")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) if arr.len() >= 3 => {
+                            let r = obj_to_f64(&arr[0]).unwrap_or(0.0);
+                            let g = obj_to_f64(&arr[1]).unwrap_or(0.0);
+                            let b_val = obj_to_f64(&arr[2]).unwrap_or(0.0);
+                            Some((r, g, b_val))
+                        }
+                        _ => None,
+                    });
+                let stroke_w = annot_dict.get(b"BS")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Dictionary(bs) => bs.get(b"W").ok().and_then(|w| obj_to_f64(w).ok()),
+                        _ => None,
+                    })
+                    .unwrap_or(2.0);
+                let endpoints = match annot_dict.get(b"L") {
+                    Ok(Object::Array(arr)) if arr.len() >= 4 => {
+                        Some((
+                            obj_to_f64(&arr[0]).unwrap_or(0.0),
+                            obj_to_f64(&arr[1]).unwrap_or(0.0),
+                            obj_to_f64(&arr[2]).unwrap_or(0.0),
+                            obj_to_f64(&arr[3]).unwrap_or(0.0),
+                        ))
+                    }
+                    _ => None,
+                };
+                let is_arrow = match annot_dict.get(b"LE") {
+                    Ok(Object::Array(le)) => {
+                        le.iter().any(|o| matches!(o, Object::Name(n) if n != b"None"))
+                    }
+                    _ => false,
+                };
+                if let (Some((lx1, ly1, lx2, ly2)), Some((r, g, b))) = (endpoints, color) {
+                    extra_content.push_str(&format!(
+                        "q {} {} {} RG {} w 1 J {} {} m {} {} l S\n",
+                        r, g, b, stroke_w, lx1, ly1, lx2, ly2
+                    ));
+                    if is_arrow {
+                        // Draw arrowhead as filled triangle
+                        let dx = lx2 - lx1;
+                        let dy = ly2 - ly1;
+                        let len = (dx * dx + dy * dy).sqrt();
+                        if len > 0.0 {
+                            let ux = dx / len;
+                            let uy = dy / len;
+                            let arrow_len = stroke_w * 5.0;
+                            let arrow_w = stroke_w * 3.0;
+                            let bx = lx2 - ux * arrow_len;
+                            let by = ly2 - uy * arrow_len;
+                            let p1x = bx - uy * arrow_w;
+                            let p1y = by + ux * arrow_w;
+                            let p2x = bx + uy * arrow_w;
+                            let p2y = by - ux * arrow_w;
+                            extra_content.push_str(&format!(
+                                "{} {} {} rg {} {} m {} {} l {} {} l f\n",
+                                r, g, b, lx2, ly2, p1x, p1y, p2x, p2y
+                            ));
+                        }
+                    }
+                    extra_content.push_str("Q\n");
+                }
             } else if subtype == b"Stamp" {
                 // Flatten stamp (signature): draw the appearance stream into page content
                 let ap = annot_dict.get(b"AP")
@@ -604,6 +1124,82 @@ fn save_locked(source: String, dest: String) -> Result<(), String> {
                         w, h, rx, ry, xobj_name
                     ));
                     extra_xobjects.push((xobj_name, form_id));
+                }
+            } else if subtype == b"FreeText" {
+                // Flatten FreeText: render text into page content
+                let text = annot_dict.get(b"Contents")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::String(bytes, _) => Some(String::from_utf8_lossy(bytes).to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                let rect = annot_dict.get(b"Rect")
+                    .ok()
+                    .and_then(|o| match o {
+                        Object::Array(arr) => parse_rect(arr).ok(),
+                        _ => None,
+                    });
+
+                if let Some((rx, ry, _rx2, ry2)) = rect {
+                    // Parse DA for font/size/color
+                    let mut font_name_str = "Helvetica".to_string();
+                    let mut font_size = 16.0_f64;
+                    let mut r = 0.0_f64;
+                    let mut g = 0.0_f64;
+                    let mut b = 0.0_f64;
+
+                    if let Ok(Object::String(da_bytes, _)) = annot_dict.get(b"DA") {
+                        let da_str = String::from_utf8_lossy(da_bytes).to_string();
+                        if let Some(tf_pos) = da_str.find("Tf") {
+                            let before = da_str[..tf_pos].trim();
+                            let parts: Vec<&str> = before.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                if let Ok(size) = parts[parts.len() - 1].parse::<f64>() {
+                                    font_size = size;
+                                }
+                                font_name_str = parts[parts.len() - 2].trim_start_matches('/').to_string();
+                            }
+                        }
+                        if let Some(rg_pos) = da_str.find("rg") {
+                            let before = da_str[..rg_pos].trim();
+                            let parts: Vec<&str> = before.split_whitespace().collect();
+                            if parts.len() >= 3 {
+                                r = parts[parts.len() - 3].parse().unwrap_or(0.0);
+                                g = parts[parts.len() - 2].parse().unwrap_or(0.0);
+                                b = parts[parts.len() - 1].parse().unwrap_or(0.0);
+                            }
+                        }
+                    }
+
+                    let font_key = format!("PF{}", sig_counter);
+                    sig_counter += 1;
+
+                    // Create font dict for the standard 14 font
+                    let mut font_dict = Dictionary::new();
+                    font_dict.set("Type", Object::Name(b"Font".to_vec()));
+                    font_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
+                    font_dict.set("BaseFont", Object::Name(font_name_str.as_bytes().to_vec()));
+                    let font_id = doc.add_object(Object::Dictionary(font_dict));
+                    add_page_font(&mut doc, *page_id, &font_key, font_id);
+
+                    // Render text lines
+                    let lines: Vec<&str> = text.split('\n').collect();
+                    let text_y = ry2 - font_size; // Start from top of rect, descending
+                    extra_content.push_str(&format!(
+                        "q BT /{} {} Tf {} {} {} rg\n",
+                        font_key, font_size, r, g, b
+                    ));
+                    for (i, line) in lines.iter().enumerate() {
+                        let ly = text_y - (i as f64 * font_size * 1.3);
+                        if ly < ry { break; } // Don't go below rect
+                        let escaped = pdf_escape_text(line);
+                        extra_content.push_str(&format!(
+                            "{} {} Td ({}) Tj\n",
+                            rx, ly, escaped
+                        ));
+                    }
+                    extra_content.push_str("ET Q\n");
                 }
             }
             // Text (sticky note) annotations are simply removed — no visual to flatten
@@ -1347,6 +1943,482 @@ fn embed_signatures(path: String, signatures: Vec<SignatureImageData>) -> Result
     Ok(())
 }
 
+#[derive(Deserialize)]
+struct InkAnnotationData {
+    page_number: usize,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    paths: Vec<Vec<f64>>, // each is flat [x1,y1,x2,y2,...] in normalized coords
+    color: [f64; 3],
+    stroke_width: f64,
+}
+
+#[tauri::command]
+fn save_ink_annotations(path: String, annotations: Vec<InkAnnotationData>) -> Result<(), String> {
+    if annotations.is_empty() {
+        return Ok(());
+    }
+
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+
+    // First, remove existing palimpsest Ink annotations
+    for (_page_num, page_id) in &pages {
+        let existing = get_existing_annots(&doc, *page_id);
+        let mut kept: Vec<Object> = Vec::new();
+        for entry in &existing {
+            let resolved = match resolve_object(&doc, entry) {
+                Ok(obj) => obj,
+                Err(_) => { kept.push(entry.clone()); continue; }
+            };
+            let dict = match &resolved {
+                Object::Dictionary(d) => d,
+                _ => { kept.push(entry.clone()); continue; }
+            };
+            let subtype = match dict.get(b"Subtype") {
+                Ok(Object::Name(n)) => n.clone(),
+                _ => { kept.push(entry.clone()); continue; }
+            };
+            if subtype == b"Ink" && is_palimpsest_annotation(&doc, &resolved) {
+                // Remove this annotation (don't keep it)
+            } else {
+                kept.push(entry.clone());
+            }
+        }
+        if let Ok(page_obj) = doc.get_object_mut(*page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                if kept.is_empty() {
+                    dict.remove(b"Annots");
+                } else {
+                    dict.set("Annots", Object::Array(kept));
+                }
+            }
+        }
+    }
+
+    // Now add new ink annotations
+    for ann in &annotations {
+        let page_entry = pages.iter().find(|(n, _)| *n as usize == ann.page_number);
+        let page_id = match page_entry {
+            Some((_, id)) => *id,
+            None => continue,
+        };
+
+        let (x0, _y0, x1, y1) = get_page_media_box(&doc, page_id)?;
+        let page_w = x1 - x0;
+        let page_h = y1 - _y0;
+
+        // Convert normalized coords to PDF coords
+        let pdf_x = x0 + ann.x * page_w;
+        let pdf_y = y1 - (ann.y + ann.height) * page_h;
+        let pdf_x2 = x0 + (ann.x + ann.width) * page_w;
+        let pdf_y2 = y1 - ann.y * page_h;
+
+        let rect = vec![
+            Object::Real(pdf_x as f32),
+            Object::Real(pdf_y as f32),
+            Object::Real(pdf_x2 as f32),
+            Object::Real(pdf_y2 as f32),
+        ];
+
+        let color = vec![
+            Object::Real(ann.color[0] as f32),
+            Object::Real(ann.color[1] as f32),
+            Object::Real(ann.color[2] as f32),
+        ];
+
+        // Build InkList: each path is an array of alternating x,y in PDF coords
+        let ink_list: Vec<Object> = ann.paths.iter().map(|flat| {
+            let mut points: Vec<Object> = Vec::new();
+            let mut i = 0;
+            while i + 1 < flat.len() {
+                let norm_x = flat[i];
+                let norm_y = flat[i + 1];
+                let px = x0 + norm_x * page_w;
+                let py = y1 - norm_y * page_h;
+                points.push(Object::Real(px as f32));
+                points.push(Object::Real(py as f32));
+                i += 2;
+            }
+            Object::Array(points)
+        }).collect();
+
+        // Border style
+        let mut bs_dict = Dictionary::new();
+        bs_dict.set("W", Object::Real(ann.stroke_width as f32));
+        bs_dict.set("S", Object::Name(b"S".to_vec()));
+
+        let mut annot_dict = Dictionary::new();
+        annot_dict.set("Type", Object::Name(b"Annot".to_vec()));
+        annot_dict.set("Subtype", Object::Name(b"Ink".to_vec()));
+        annot_dict.set("Rect", Object::Array(rect));
+        annot_dict.set("InkList", Object::Array(ink_list));
+        annot_dict.set("C", Object::Array(color));
+        annot_dict.set("BS", Object::Dictionary(bs_dict));
+        annot_dict.set("F", Object::Integer(4));
+        annot_dict.set("NM", Object::String(
+            PALIMPSEST_MARKER.to_vec(),
+            StringFormat::Literal,
+        ));
+
+        let annot_id = doc.add_object(Object::Dictionary(annot_dict));
+
+        // Add to page's Annots array
+        let mut existing_annots = get_existing_annots(&doc, page_id);
+        existing_annots.push(Object::Reference(annot_id));
+        if let Ok(page_obj) = doc.get_object_mut(page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                dict.set("Annots", Object::Array(existing_annots));
+            }
+        }
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct TextAnnotationData {
+    page_number: usize,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    text: String,
+    color: [f64; 3],
+    font_size: f64,
+    font_family: String,  // "sans-serif" | "serif" | "monospace"
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    background_color: String,  // "transparent" or rgba color string
+}
+
+fn pdf_font_name(family: &str, bold: bool, italic: bool) -> &'static str {
+    match (family, bold, italic) {
+        ("serif", false, false) => "Times-Roman",
+        ("serif", true, false) => "Times-Bold",
+        ("serif", false, true) => "Times-Italic",
+        ("serif", true, true) => "Times-BoldItalic",
+        ("monospace", false, false) => "Courier",
+        ("monospace", true, false) => "Courier-Bold",
+        ("monospace", false, true) => "Courier-Oblique",
+        ("monospace", true, true) => "Courier-BoldOblique",
+        // sans-serif (default)
+        (_, false, false) => "Helvetica",
+        (_, true, false) => "Helvetica-Bold",
+        (_, false, true) => "Helvetica-Oblique",
+        (_, true, true) => "Helvetica-BoldOblique",
+    }
+}
+
+fn parse_font_family_from_name(name: &str) -> (&'static str, bool, bool) {
+    let lower = name.to_lowercase();
+    let bold = lower.contains("bold");
+    let italic = lower.contains("italic") || lower.contains("oblique");
+    let family = if lower.contains("times") {
+        "serif"
+    } else if lower.contains("courier") {
+        "monospace"
+    } else {
+        "sans-serif"
+    };
+    (family, bold, italic)
+}
+
+/// Add a font entry to a page's Resources/Font dictionary
+fn add_page_font(doc: &mut Document, page_id: ObjectId, font_name: &str, font_id: ObjectId) {
+    if let Ok(page_obj) = doc.get_object_mut(page_id) {
+        if let Ok(dict) = page_obj.as_dict_mut() {
+            let mut resources = match dict.get(b"Resources") {
+                Ok(Object::Dictionary(d)) => d.clone(),
+                _ => Dictionary::new(),
+            };
+            let mut fonts = match resources.get(b"Font") {
+                Ok(Object::Dictionary(d)) => d.clone(),
+                _ => Dictionary::new(),
+            };
+            fonts.set(font_name.as_bytes(), Object::Reference(font_id));
+            resources.set("Font", Object::Dictionary(fonts));
+            dict.set("Resources", Object::Dictionary(resources));
+        }
+    }
+}
+
+#[tauri::command]
+fn save_text_annotations(path: String, annotations: Vec<TextAnnotationData>) -> Result<(), String> {
+    if annotations.is_empty() {
+        return Ok(());
+    }
+
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+
+    // Remove existing palimpsest FreeText annotations
+    for (_page_num, page_id) in &pages {
+        let existing = get_existing_annots(&doc, *page_id);
+        let mut kept: Vec<Object> = Vec::new();
+        for entry in &existing {
+            let resolved = match resolve_object(&doc, entry) {
+                Ok(obj) => obj,
+                Err(_) => { kept.push(entry.clone()); continue; }
+            };
+            let dict = match &resolved {
+                Object::Dictionary(d) => d,
+                _ => { kept.push(entry.clone()); continue; }
+            };
+            let subtype = match dict.get(b"Subtype") {
+                Ok(Object::Name(n)) => n.clone(),
+                _ => { kept.push(entry.clone()); continue; }
+            };
+            if subtype == b"FreeText" && is_palimpsest_annotation(&doc, &resolved) {
+                // Remove
+            } else {
+                kept.push(entry.clone());
+            }
+        }
+        if let Ok(page_obj) = doc.get_object_mut(*page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                if kept.is_empty() {
+                    dict.remove(b"Annots");
+                } else {
+                    dict.set("Annots", Object::Array(kept));
+                }
+            }
+        }
+    }
+
+    // Add new text annotations
+    for ann in &annotations {
+        let page_entry = pages.iter().find(|(n, _)| *n as usize == ann.page_number);
+        let page_id = match page_entry {
+            Some((_, id)) => *id,
+            None => continue,
+        };
+
+        let (x0, _y0, x1, y1) = get_page_media_box(&doc, page_id)?;
+        let page_w = x1 - x0;
+        let page_h = y1 - _y0;
+
+        let pdf_x = x0 + ann.x * page_w;
+        let pdf_y2 = y1 - ann.y * page_h; // top in PDF coords
+        let pdf_x2 = x0 + (ann.x + ann.width) * page_w;
+        let pdf_y = y1 - (ann.y + ann.height) * page_h; // bottom in PDF coords
+
+        let font_name = pdf_font_name(&ann.font_family, ann.bold, ann.italic);
+        let da = format!("/{} {} Tf {} {} {} rg",
+            font_name, ann.font_size,
+            ann.color[0], ann.color[1], ann.color[2]);
+
+        let rect = vec![
+            Object::Real(pdf_x as f32),
+            Object::Real(pdf_y as f32),
+            Object::Real(pdf_x2 as f32),
+            Object::Real(pdf_y2 as f32),
+        ];
+
+        let color = vec![
+            Object::Real(ann.color[0] as f32),
+            Object::Real(ann.color[1] as f32),
+            Object::Real(ann.color[2] as f32),
+        ];
+
+        let mut annot_dict = Dictionary::new();
+        annot_dict.set("Type", Object::Name(b"Annot".to_vec()));
+        annot_dict.set("Subtype", Object::Name(b"FreeText".to_vec()));
+        annot_dict.set("Rect", Object::Array(rect));
+        annot_dict.set("Contents", Object::String(ann.text.as_bytes().to_vec(), StringFormat::Literal));
+        annot_dict.set("DA", Object::String(da.into_bytes(), StringFormat::Literal));
+        annot_dict.set("C", Object::Array(color));
+        annot_dict.set("F", Object::Integer(4));
+        if ann.underline {
+            annot_dict.set("PalUnderline", Object::Boolean(true));
+        }
+        if ann.background_color != "transparent" {
+            annot_dict.set("PalBgColor", Object::String(
+                ann.background_color.as_bytes().to_vec(),
+                StringFormat::Literal,
+            ));
+        }
+        annot_dict.set("NM", Object::String(
+            PALIMPSEST_MARKER.to_vec(),
+            StringFormat::Literal,
+        ));
+
+        let annot_id = doc.add_object(Object::Dictionary(annot_dict));
+        let mut existing_annots = get_existing_annots(&doc, page_id);
+        existing_annots.push(Object::Reference(annot_id));
+        if let Ok(page_obj) = doc.get_object_mut(page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                dict.set("Annots", Object::Array(existing_annots));
+            }
+        }
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct ShapeAnnotationData {
+    page_number: usize,
+    shape: String,     // "rectangle" | "ellipse" | "line" | "arrow"
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    color: [f64; 3],
+    stroke_width: f64,
+}
+
+#[tauri::command]
+fn save_shape_annotations(path: String, annotations: Vec<ShapeAnnotationData>) -> Result<(), String> {
+    if annotations.is_empty() {
+        return Ok(());
+    }
+
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+
+    // First, remove existing palimpsest shape annotations (Square, Circle, Line)
+    for (_page_num, page_id) in &pages {
+        let existing = get_existing_annots(&doc, *page_id);
+        let mut kept: Vec<Object> = Vec::new();
+        for entry in &existing {
+            let resolved = match resolve_object(&doc, entry) {
+                Ok(obj) => obj,
+                Err(_) => { kept.push(entry.clone()); continue; }
+            };
+            let dict = match &resolved {
+                Object::Dictionary(d) => d,
+                _ => { kept.push(entry.clone()); continue; }
+            };
+            let subtype = match dict.get(b"Subtype") {
+                Ok(Object::Name(n)) => n.clone(),
+                _ => { kept.push(entry.clone()); continue; }
+            };
+            if (subtype == b"Square" || subtype == b"Circle" || subtype == b"Line")
+                && is_palimpsest_annotation(&doc, &resolved)
+            {
+                // Remove this annotation
+            } else {
+                kept.push(entry.clone());
+            }
+        }
+        if let Ok(page_obj) = doc.get_object_mut(*page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                if kept.is_empty() {
+                    dict.remove(b"Annots");
+                } else {
+                    dict.set("Annots", Object::Array(kept));
+                }
+            }
+        }
+    }
+
+    // Now add new shape annotations
+    for ann in &annotations {
+        let page_entry = pages.iter().find(|(n, _)| *n as usize == ann.page_number);
+        let page_id = match page_entry {
+            Some((_, id)) => *id,
+            None => continue,
+        };
+
+        let (x0, _y0, x1, y1) = get_page_media_box(&doc, page_id)?;
+        let page_w = x1 - x0;
+        let page_h = y1 - _y0;
+
+        let color = vec![
+            Object::Real(ann.color[0] as f32),
+            Object::Real(ann.color[1] as f32),
+            Object::Real(ann.color[2] as f32),
+        ];
+
+        let mut bs_dict = Dictionary::new();
+        bs_dict.set("W", Object::Real(ann.stroke_width as f32));
+        bs_dict.set("S", Object::Name(b"S".to_vec()));
+
+        let mut annot_dict = Dictionary::new();
+        annot_dict.set("Type", Object::Name(b"Annot".to_vec()));
+        annot_dict.set("C", Object::Array(color));
+        annot_dict.set("BS", Object::Dictionary(bs_dict));
+        annot_dict.set("F", Object::Integer(4));
+        annot_dict.set("NM", Object::String(
+            PALIMPSEST_MARKER.to_vec(),
+            StringFormat::Literal,
+        ));
+
+        match ann.shape.as_str() {
+            "rectangle" | "ellipse" => {
+                let pdf_x1 = x0 + ann.x1 * page_w;
+                let pdf_y1 = y1 - ann.y1 * page_h;
+                let pdf_x2 = x0 + ann.x2 * page_w;
+                let pdf_y2 = y1 - ann.y2 * page_h;
+                let rx = pdf_x1.min(pdf_x2);
+                let ry = pdf_y1.min(pdf_y2);
+                let rx2 = pdf_x1.max(pdf_x2);
+                let ry2 = pdf_y1.max(pdf_y2);
+                let rect = vec![
+                    Object::Real(rx as f32),
+                    Object::Real(ry as f32),
+                    Object::Real(rx2 as f32),
+                    Object::Real(ry2 as f32),
+                ];
+                let subtype = if ann.shape == "rectangle" { b"Square".to_vec() } else { b"Circle".to_vec() };
+                annot_dict.set("Subtype", Object::Name(subtype));
+                annot_dict.set("Rect", Object::Array(rect));
+            }
+            "line" | "arrow" => {
+                let pdf_x1 = x0 + ann.x1 * page_w;
+                let pdf_y1 = y1 - ann.y1 * page_h;
+                let pdf_x2 = x0 + ann.x2 * page_w;
+                let pdf_y2 = y1 - ann.y2 * page_h;
+                // Rect is bounding box of the line
+                let rx = pdf_x1.min(pdf_x2);
+                let ry = pdf_y1.min(pdf_y2);
+                let rx2 = pdf_x1.max(pdf_x2);
+                let ry2 = pdf_y1.max(pdf_y2);
+                let rect = vec![
+                    Object::Real(rx as f32),
+                    Object::Real(ry as f32),
+                    Object::Real(rx2 as f32),
+                    Object::Real(ry2 as f32),
+                ];
+                let l_arr = vec![
+                    Object::Real(pdf_x1 as f32),
+                    Object::Real(pdf_y1 as f32),
+                    Object::Real(pdf_x2 as f32),
+                    Object::Real(pdf_y2 as f32),
+                ];
+                annot_dict.set("Subtype", Object::Name(b"Line".to_vec()));
+                annot_dict.set("Rect", Object::Array(rect));
+                annot_dict.set("L", Object::Array(l_arr));
+                if ann.shape == "arrow" {
+                    annot_dict.set("LE", Object::Array(vec![
+                        Object::Name(b"None".to_vec()),
+                        Object::Name(b"OpenArrow".to_vec()),
+                    ]));
+                }
+            }
+            _ => continue,
+        }
+
+        let annot_id = doc.add_object(Object::Dictionary(annot_dict));
+        let mut existing_annots = get_existing_annots(&doc, page_id);
+        existing_annots.push(Object::Reference(annot_id));
+        if let Ok(page_obj) = doc.get_object_mut(page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                dict.set("Annots", Object::Array(existing_annots));
+            }
+        }
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1464,7 +2536,10 @@ pub fn run() {
             set_page_order,
             merge_pdfs,
             save_form_fields,
-            embed_signatures
+            embed_signatures,
+            save_ink_annotations,
+            save_shape_annotations,
+            save_text_annotations
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

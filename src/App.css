@@ -341,6 +341,60 @@ html, body, #root {
   border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
+/* More tools dropdown */
+.more-tools-group {
+  position: relative;
+}
+
+.more-tools-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  min-width: 150px;
+  padding: 4px 0;
+}
+
+.toolbar .more-tools-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1a1a1a;
+  text-align: left;
+  width: 100%;
+  border-radius: 0;
+}
+
+.toolbar .more-tools-option:hover {
+  background: #f0f0f0;
+}
+
+.toolbar .more-tools-active {
+  background: #e8f0fe;
+}
+
+.toolbar .more-tools-option svg {
+  flex-shrink: 0;
+}
+
+/* Save dropdown divider */
+.save-dropdown-divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 4px 0;
+}
+
 /* Save split button */
 .save-tool-group {
   position: relative;
@@ -446,6 +500,30 @@ html, body, #root {
   min-width: 60px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-input {
+  width: 36px;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 2px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  outline: none;
+}
+
+.page-input:focus {
+  border-color: #2563eb;
+}
+
+.page-total {
+  font-size: 13px;
+  color: #888;
 }
 
 .zoom-input {
@@ -975,6 +1053,226 @@ html, body, #root {
   border-color: #333;
 }
 
+/* Context menu stroke width options */
+.annotation-stroke-widths {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+.annotation-stroke-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.annotation-stroke-option:hover {
+  background: #f0f0f0;
+}
+
+/* Text markup annotations (underline, strikethrough) */
+.text-markup-annotation {
+  border-radius: 2px;
+}
+
+.text-markup-annotation:hover {
+  outline: 2px solid #f59e0b;
+  outline-offset: -1px;
+}
+
+/* Ink annotations */
+.ink-annotation {
+  border-radius: 2px;
+}
+
+.ink-annotation:hover {
+  outline: 2px solid #f59e0b;
+  outline-offset: -1px;
+}
+
+/* Shape annotations (rectangle, ellipse, line, arrow) */
+.shape-annotation {
+  border-radius: 2px;
+}
+
+.shape-annotation:hover {
+  outline: 2px solid #f59e0b;
+  outline-offset: -1px;
+}
+
+.shape-endpoint-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #2563eb;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  cursor: grab;
+  z-index: 1;
+}
+
+/* Text annotations (FreeText) — always light bg for readability */
+.text-annotation {
+  z-index: 11;
+  border-radius: 2px;
+}
+
+.text-annotation:hover {
+  outline: 2px solid #f59e0b;
+  outline-offset: -1px;
+}
+
+.text-annotation-editing {
+  outline: 2px solid #2563eb !important;
+  outline-offset: -1px;
+}
+
+.text-annotation-content {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Context menu: font size row */
+.annotation-font-sizes {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+.annotation-font-size-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.annotation-font-size-btn:hover {
+  background: #f0f0f0;
+}
+
+.annotation-font-size-btn.active {
+  background: #e0e7ff;
+  font-weight: 600;
+}
+
+/* Context menu: bold/italic toggles */
+.annotation-font-toggles {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+.annotation-font-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: 1px solid #ddd;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.annotation-font-toggle-btn:hover {
+  background: #f0f0f0;
+}
+
+.annotation-font-toggle-btn.active {
+  background: #e0e7ff;
+  border-color: #2563eb;
+}
+
+/* Context menu: font family */
+.annotation-font-families {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.annotation-font-family-btn {
+  display: block;
+  width: 100%;
+  padding: 4px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.annotation-font-family-btn:hover {
+  background: #f5f5f5;
+}
+
+.annotation-font-family-btn.active {
+  background: #e0e7ff;
+  font-weight: 600;
+}
+
+/* Context menu: background color */
+.annotation-bg-colors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.annotation-bg-label {
+  font-size: 11px;
+  color: #888;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.annotation-bg-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.annotation-bg-swatch:hover {
+  transform: scale(1.15);
+}
+
+.annotation-bg-swatch.active {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+/* Divider in more-tools dropdown */
+.more-tools-divider {
+  height: 1px;
+  background: #e5e5e5;
+  margin: 4px 0;
+}
+
+.ink-live-canvas {
+  pointer-events: none;
+}
+
 .highlight-preview {
   pointer-events: none;
 }
@@ -1219,7 +1517,8 @@ html, body, #root {
     background: #555;
   }
 
-  .zoom-input {
+  .zoom-input,
+  .page-input {
     background: #333;
     border-color: #555;
     color: #e8e8e8;
@@ -1393,6 +1692,114 @@ html, body, #root {
 
   .toolbar .save-dropdown-option:hover {
     background: #3a3a3a;
+  }
+
+  .save-dropdown-divider {
+    background: #444;
+  }
+
+  .more-tools-divider {
+    background: #444;
+  }
+
+  .shape-endpoint-handle {
+    background: #5b9cf6;
+    border-color: #333;
+  }
+
+  .annotation-stroke-widths {
+    border-bottom-color: #444;
+  }
+
+  .annotation-stroke-option {
+    color: #e8e8e8;
+  }
+
+  .annotation-stroke-option:hover {
+    background: #3a3a3a;
+  }
+
+  .annotation-font-sizes {
+    border-bottom-color: #444;
+  }
+
+  .annotation-font-size-btn {
+    color: #e8e8e8;
+  }
+
+  .annotation-font-size-btn:hover {
+    background: #3a3a3a;
+  }
+
+  .annotation-font-size-btn.active {
+    background: #1e3a5f;
+  }
+
+  .annotation-font-toggles {
+    border-bottom-color: #444;
+  }
+
+  .annotation-font-toggle-btn {
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .annotation-font-toggle-btn:hover {
+    background: #3a3a3a;
+  }
+
+  .annotation-font-toggle-btn.active {
+    background: #1e3a5f;
+    border-color: #2563eb;
+  }
+
+  .annotation-font-families {
+    border-bottom-color: #444;
+  }
+
+  .annotation-font-family-btn {
+    color: #e8e8e8;
+  }
+
+  .annotation-font-family-btn:hover {
+    background: #3a3a3a;
+  }
+
+  .annotation-font-family-btn.active {
+    background: #1e3a5f;
+  }
+
+  .annotation-bg-colors {
+    border-bottom-color: #444;
+  }
+
+  .annotation-bg-label {
+    color: #999;
+  }
+
+  .annotation-bg-swatch {
+    border-color: #666 !important;
+  }
+
+  .annotation-bg-swatch.active {
+    outline-color: #60a5fa;
+  }
+
+  .more-tools-dropdown {
+    background: #2a2a2a;
+    border-color: #444;
+  }
+
+  .toolbar .more-tools-option {
+    color: #e8e8e8;
+  }
+
+  .toolbar .more-tools-option:hover {
+    background: #3a3a3a;
+  }
+
+  .toolbar .more-tools-active {
+    background: #1e3a5f;
   }
 
   .highlight-color-dropdown {

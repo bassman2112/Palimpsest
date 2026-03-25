@@ -6,7 +6,7 @@ export interface PageDimension {
   height: number;
 }
 
-export type AnnotationTool = "none" | "highlight" | "sticky-note" | "signature";
+export type AnnotationTool = "none" | "highlight" | "sticky-note" | "text" | "signature" | "underline" | "strikethrough" | "ink" | "shape-rectangle" | "shape-ellipse" | "shape-line" | "shape-arrow";
 
 export interface HighlightAnnotation {
   id: string;
@@ -40,7 +40,64 @@ export interface SignatureAnnotation {
   imageData: string; // data URL (JPEG with white background)
 }
 
-export type Annotation = HighlightAnnotation | StickyNoteAnnotation | SignatureAnnotation;
+export interface TextMarkupAnnotation {
+  id: string;
+  type: "underline" | "strikethrough";
+  pageNumber: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+}
+
+export interface InkAnnotation {
+  id: string;
+  type: "ink";
+  pageNumber: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  paths: Array<Array<{ x: number; y: number }>>; // normalized page coords
+  color: string;
+  strokeWidth: number; // logical pixels, scaled by zoom at render
+}
+
+export interface TextAnnotation {
+  id: string;
+  type: "text";
+  pageNumber: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  color: string;
+  fontSize: number;
+  fontFamily: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  backgroundColor: string; // "transparent" or rgba color
+}
+
+export type ShapeKind = "rectangle" | "ellipse" | "line" | "arrow";
+
+export interface ShapeAnnotation {
+  id: string;
+  type: "shape";
+  shape: ShapeKind;
+  pageNumber: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string;
+  strokeWidth: number;
+}
+
+export type Annotation = HighlightAnnotation | StickyNoteAnnotation | TextAnnotation | SignatureAnnotation | TextMarkupAnnotation | InkAnnotation | ShapeAnnotation;
 
 export interface MergeSource {
   path: string;

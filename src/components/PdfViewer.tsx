@@ -18,6 +18,7 @@ interface PdfViewerProps {
   viewerContainerRef?: React.MutableRefObject<HTMLDivElement | null>;
   activeTool: AnnotationTool;
   highlightColor: string;
+  strokeWidth: number;
   onAddAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   onDeleteAnnotation: (id: string) => void;
@@ -38,6 +39,7 @@ export function PdfViewer({
   viewerContainerRef,
   activeTool,
   highlightColor,
+  strokeWidth,
   onAddAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
@@ -134,6 +136,7 @@ export function PdfViewer({
             annotations={getPageAnnotations(dim.pageNumber)}
             activeTool={activeTool}
             highlightColor={highlightColor}
+            strokeWidth={strokeWidth}
             onAddAnnotation={onAddAnnotation}
             onUpdateAnnotation={onUpdateAnnotation}
             onDeleteAnnotation={onDeleteAnnotation}

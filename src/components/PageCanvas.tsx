@@ -13,6 +13,7 @@ interface PageCanvasProps {
   annotations: Annotation[];
   activeTool: AnnotationTool;
   highlightColor: string;
+  strokeWidth: number;
   onAddAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   onDeleteAnnotation: (id: string) => void;
@@ -30,6 +31,7 @@ export function PageCanvas({
   annotations,
   activeTool,
   highlightColor,
+  strokeWidth,
   onAddAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
@@ -226,6 +228,7 @@ export function PageCanvas({
             annotations={annotations}
             activeTool={activeTool}
             highlightColor={highlightColor}
+            strokeWidth={strokeWidth}
             onAddAnnotation={onAddAnnotation}
             onUpdateAnnotation={onUpdateAnnotation}
             onDeleteAnnotation={onDeleteAnnotation}

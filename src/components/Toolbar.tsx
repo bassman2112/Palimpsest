@@ -4,15 +4,6 @@ import type { AnnotationTool } from "../types";
 const isMac = navigator.platform.toUpperCase().includes("MAC");
 const mod = isMac ? "Cmd" : "Ctrl";
 
-const HIGHLIGHT_COLORS = [
-  { color: "#ffff00", label: "Yellow" },
-  { color: "#ff6b6b", label: "Red" },
-  { color: "#ffa500", label: "Orange" },
-  { color: "#51cf66", label: "Green" },
-  { color: "#339af0", label: "Blue" },
-  { color: "#cc5de8", label: "Purple" },
-  { color: "#f06595", label: "Pink" },
-];
 
 interface ToolbarProps {
   fileName: string | null;
@@ -25,8 +16,6 @@ interface ToolbarProps {
   hasUnsavedChanges: boolean;
   viewMode: "scroll" | "gallery";
   isMerging?: boolean;
-  highlightColor: string;
-  onHighlightColorChange: (color: string) => void;
   onOpen: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
@@ -44,6 +33,7 @@ interface ToolbarProps {
   onSaveMerged?: () => void;
   onExitMerge?: () => void;
   onSignatureClick?: () => void;
+  onGoToPage?: (page: number) => void;
 }
 
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5];
@@ -61,8 +51,6 @@ export function Toolbar({
   hasUnsavedChanges,
   viewMode,
   isMerging,
-  highlightColor,
-  onHighlightColorChange,
   onOpen,
   onPrevPage,
   onNextPage,
@@ -80,12 +68,14 @@ export function Toolbar({
   onSaveMerged,
   onExitMerge,
   onSignatureClick,
+  onGoToPage,
 }: ToolbarProps) {
   const [zoomInput, setZoomInput] = useState<string | null>(null);
-  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [pageInput, setPageInput] = useState<string | null>(null);
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
-  const colorPickerRef = useRef<HTMLDivElement>(null);
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
   const saveMenuRef = useRef<HTMLDivElement>(null);
+  const moreToolsRef = useRef<HTMLDivElement>(null);
 
   const zoomIn = () => {
     const next = ZOOM_STEPS.find((s) => s > zoom + 0.001);
@@ -106,17 +96,14 @@ export function Toolbar({
     setZoomInput(null);
   };
 
-  // Close color picker on outside click
-  useEffect(() => {
-    if (!colorPickerOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) {
-        setColorPickerOpen(false);
-      }
+  const commitPageInput = () => {
+    if (pageInput === null) return;
+    const num = parseInt(pageInput, 10);
+    if (!isNaN(num) && num >= 1 && num <= totalPages) {
+      onGoToPage?.(num);
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [colorPickerOpen]);
+    setPageInput(null);
+  };
 
   // Close save menu on outside click
   useEffect(() => {
@@ -129,6 +116,19 @@ export function Toolbar({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [saveMenuOpen]);
+
+  // Close more tools dropdown on outside click
+  useEffect(() => {
+    if (!moreToolsOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (moreToolsRef.current && !moreToolsRef.current.contains(e.target as Node)) {
+        setMoreToolsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [moreToolsOpen]);
+
 
   return (
     <div className="toolbar">
@@ -168,7 +168,27 @@ export function Toolbar({
             ‹
           </button>
           <span className="page-info">
-            {currentPage} / {totalPages}
+            <input
+              className="page-input"
+              value={pageInput !== null ? pageInput : String(currentPage)}
+              onChange={(e) => setPageInput(e.target.value)}
+              onFocus={(e) => {
+                setPageInput(String(currentPage));
+                requestAnimationFrame(() => e.target.select());
+              }}
+              onBlur={commitPageInput}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  commitPageInput();
+                  (e.target as HTMLInputElement).blur();
+                }
+                if (e.key === "Escape") {
+                  setPageInput(null);
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+            />
+            <span className="page-total">/ {totalPages}</span>
           </span>
           <button onClick={onNextPage} disabled={currentPage >= totalPages}>
             ›
@@ -234,60 +254,17 @@ export function Toolbar({
             </>
           ) : (
             <>
-              {onAddDocument && (
-                <>
-                  <div className="toolbar-divider" />
-                  <button onClick={onAddDocument} data-tooltip="Merge with another PDF">
-                    Merge PDF
-                  </button>
-                </>
-              )}
               <div className="toolbar-divider" />
-              <div className="highlight-tool-group" ref={colorPickerRef}>
-                <button
-                  onClick={() => onToolChange(activeTool === "highlight" ? "none" : "highlight")}
-                  className={activeTool === "highlight" ? "tool-active" : ""}
-                  data-tooltip="Highlight"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M10.5 1.5L14.5 5.5L6 14H2V10L10.5 1.5Z" />
-                    <path d="M8.5 3.5L12.5 7.5" />
-                  </svg>
-                </button>
-                <button
-                  className="highlight-color-btn"
-                  onClick={() => setColorPickerOpen((o) => !o)}
-                  data-tooltip="Highlight Color"
-                >
-                  <span
-                    className="highlight-color-dot"
-                    style={{ backgroundColor: highlightColor }}
-                  />
-                </button>
-                {colorPickerOpen && (
-                  <div className="highlight-color-dropdown">
-                    {HIGHLIGHT_COLORS.map((c) => (
-                      <button
-                        key={c.color}
-                        className={`highlight-color-option${highlightColor === c.color ? " highlight-color-active" : ""}`}
-                        onClick={() => {
-                          onHighlightColorChange(c.color);
-                          setColorPickerOpen(false);
-                          if (activeTool !== "highlight") {
-                            onToolChange("highlight");
-                          }
-                        }}
-                      >
-                        <span
-                          className="highlight-color-swatch"
-                          style={{ backgroundColor: c.color }}
-                        />
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => onToolChange(activeTool === "highlight" ? "none" : "highlight")}
+                className={activeTool === "highlight" ? "tool-active" : ""}
+                data-tooltip="Highlight"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.5 1.5L14.5 5.5L6 14H2V10L10.5 1.5Z" />
+                  <path d="M8.5 3.5L12.5 7.5" />
+                </svg>
+              </button>
               <button
                 onClick={() => onToolChange(activeTool === "sticky-note" ? "none" : "sticky-note")}
                 className={activeTool === "sticky-note" ? "tool-active" : ""}
@@ -296,6 +273,17 @@ export function Toolbar({
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M2 2h12v8l-4 4H2V2Z" />
                   <path d="M10 10v4" />
+                </svg>
+              </button>
+              <button
+                onClick={() => onToolChange(activeTool === "text" ? "none" : "text")}
+                className={activeTool === "text" ? "tool-active" : ""}
+                data-tooltip="Text"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3h10" />
+                  <path d="M8 3v10" />
+                  <path d="M5 13h6" />
                 </svg>
               </button>
               <button
@@ -314,6 +302,112 @@ export function Toolbar({
                   <path d="M1 15h14" />
                 </svg>
               </button>
+              <div className="more-tools-group" ref={moreToolsRef}>
+                <button
+                  onClick={() => setMoreToolsOpen((o) => !o)}
+                  className={["underline", "strikethrough", "ink", "shape-rectangle", "shape-ellipse", "shape-line", "shape-arrow"].includes(activeTool) ? "tool-active" : ""}
+                  data-tooltip="More Tools"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="3" cy="8" r="1.5" />
+                    <circle cx="8" cy="8" r="1.5" />
+                    <circle cx="13" cy="8" r="1.5" />
+                  </svg>
+                </button>
+                {moreToolsOpen && (
+                  <div className="more-tools-dropdown">
+                    <button
+                      className={`more-tools-option${activeTool === "underline" ? " more-tools-active" : ""}`}
+                      onClick={() => {
+                        setMoreToolsOpen(false);
+                        onToolChange(activeTool === "underline" ? "none" : "underline");
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 2v6a4 4 0 0 0 8 0V2" />
+                        <path d="M2 14h12" />
+                      </svg>
+                      Underline
+                    </button>
+                    <button
+                      className={`more-tools-option${activeTool === "strikethrough" ? " more-tools-active" : ""}`}
+                      onClick={() => {
+                        setMoreToolsOpen(false);
+                        onToolChange(activeTool === "strikethrough" ? "none" : "strikethrough");
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 3h6a3 3 0 0 1 0 6H5" />
+                        <path d="M2 8h12" />
+                        <path d="M5 8v2a3 3 0 0 0 6 0" />
+                      </svg>
+                      Strikethrough
+                    </button>
+                    <button
+                      className={`more-tools-option${activeTool === "ink" ? " more-tools-active" : ""}`}
+                      onClick={() => {
+                        setMoreToolsOpen(false);
+                        onToolChange(activeTool === "ink" ? "none" : "ink");
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 13.5c3-2 5-8 7-8s1.5 3 3 3c1 0 2-1.5 2-1.5" />
+                      </svg>
+                      Draw
+                    </button>
+                    <div className="more-tools-divider" />
+                    <button
+                      className={`more-tools-option${activeTool === "shape-rectangle" ? " more-tools-active" : ""}`}
+                      onClick={() => {
+                        setMoreToolsOpen(false);
+                        onToolChange(activeTool === "shape-rectangle" ? "none" : "shape-rectangle");
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="3" width="12" height="10" rx="1" />
+                      </svg>
+                      Rectangle
+                    </button>
+                    <button
+                      className={`more-tools-option${activeTool === "shape-ellipse" ? " more-tools-active" : ""}`}
+                      onClick={() => {
+                        setMoreToolsOpen(false);
+                        onToolChange(activeTool === "shape-ellipse" ? "none" : "shape-ellipse");
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <ellipse cx="8" cy="8" rx="6" ry="5" />
+                      </svg>
+                      Ellipse
+                    </button>
+                    <button
+                      className={`more-tools-option${activeTool === "shape-line" ? " more-tools-active" : ""}`}
+                      onClick={() => {
+                        setMoreToolsOpen(false);
+                        onToolChange(activeTool === "shape-line" ? "none" : "shape-line");
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                        <line x1="2" y1="14" x2="14" y2="2" />
+                      </svg>
+                      Line
+                    </button>
+                    <button
+                      className={`more-tools-option${activeTool === "shape-arrow" ? " more-tools-active" : ""}`}
+                      onClick={() => {
+                        setMoreToolsOpen(false);
+                        onToolChange(activeTool === "shape-arrow" ? "none" : "shape-arrow");
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="2" y1="14" x2="14" y2="2" />
+                        <polyline points="7,2 14,2 14,9" />
+                      </svg>
+                      Arrow
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div className="toolbar-divider" />
               <div className="save-tool-group" ref={saveMenuRef}>
@@ -350,6 +444,20 @@ export function Toolbar({
                       >
                         Save As Locked…
                       </button>
+                    )}
+                    {onAddDocument && (
+                      <>
+                        <div className="save-dropdown-divider" />
+                        <button
+                          className="save-dropdown-option"
+                          onClick={() => {
+                            setSaveMenuOpen(false);
+                            onAddDocument();
+                          }}
+                        >
+                          Merge PDF…
+                        </button>
+                      </>
                     )}
                   </div>
                 )}

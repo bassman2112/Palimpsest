@@ -28,10 +28,11 @@ export function SaveDialog({ title, onResult }: SaveDialogProps) {
         </div>
         <div className="save-dialog-actions">
           <button
-            className="save-dialog-btn save-dialog-cancel"
-            onClick={() => onResult("cancel")}
+            className="save-dialog-btn save-dialog-save"
+            onClick={() => onResult("save")}
+            autoFocus
           >
-            Cancel
+            Save
           </button>
           <button
             className="save-dialog-btn save-dialog-discard"
@@ -40,11 +41,10 @@ export function SaveDialog({ title, onResult }: SaveDialogProps) {
             Don&rsquo;t Save
           </button>
           <button
-            className="save-dialog-btn save-dialog-save"
-            onClick={() => onResult("save")}
-            autoFocus
+            className="save-dialog-btn save-dialog-cancel"
+            onClick={() => onResult("cancel")}
           >
-            Save
+            Cancel
           </button>
         </div>
       </div>
