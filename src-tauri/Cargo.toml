@@ -1,6 +1,6 @@
 [package]
 name = "palimpsest"
-version = "0.5.2"
+version = "0.6.0"
 description = "A free PDF editor"
 authors = ["you"]
 license = "AGPL-3.0-only"
