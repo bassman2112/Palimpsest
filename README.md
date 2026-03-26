@@ -20,7 +20,7 @@
   <img src="docs/screenshot.png" alt="Palimpsest screenshot" width="900" />
 </p>
 
-A [palimpsest](https://en.wikipedia.org/wiki/Palimpsest) is a manuscript where older writing has been scraped away and written over — but traces of earlier layers still show through. That's exactly what came to mind when I was thinking about the way I use PDFs: with plenty of annotations which live alongside a project!
+A [palimpsest](https://en.wikipedia.org/wiki/Palimpsest) is a manuscript where older writing has been scraped away and written over — but traces of earlier layers still show through. That's exactly what came to mind when I was thinking about the way I use PDFs: with plenty of annotations which live alongside a project =]
 
 Palimpsest lets you view, annotate, and organize PDFs entirely on your machine. No account, no subscription, no cloud upload. Open a file, highlight some text, drop a note, sign it, save. Everything is written directly into the PDF using standard annotation formats that any reader can display.
 
@@ -126,7 +126,11 @@ Bumps the version in `package.json` and `Cargo.toml`, commits, tags, and pushes.
 
 ## License
 
-Licensed under [AGPL-3.0](./LICENSE) — Palimpsest will always be free and open source, and so will any fork or modified version.
+Licensed under [AGPL-3.0](./LICENSE) 
+
+Palimpsest will always be free and open source, and so will any fork or modified version. There's no telemetry, no analytics, no tracking, and no artificial limits. You download it, you use it, and that's the whole relationship.
+
+Good software doesn't need to extract value from the people who use it.
 
 ## Author
 
