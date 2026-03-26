@@ -124,10 +124,24 @@ class MupdfPage implements PdfPage {
       rgba[j + 3] = 255;
     }
 
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d")!;
-    ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
+    // MuPDF may ceil pixmap dimensions, producing an extra white row/column.
+    // Render to a temp canvas, then draw cropped to the expected viewport size.
+    const expectedW = Math.round(viewport.width * dpr);
+    const expectedH = Math.round(viewport.height * dpr);
+    if (w > expectedW || h > expectedH) {
+      const tmp = new OffscreenCanvas(w, h);
+      const tmpCtx = tmp.getContext("2d")!;
+      tmpCtx.putImageData(new ImageData(rgba, w, h), 0, 0);
+      canvas.width = expectedW;
+      canvas.height = expectedH;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(tmp, 0, 0, expectedW, expectedH, 0, 0, expectedW, expectedH);
+    } else {
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d")!;
+      ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
+    }
 
     return {
       promise: Promise.resolve(),
