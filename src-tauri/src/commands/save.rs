@@ -969,7 +969,6 @@ pub fn apply_redactions(path: String) -> Result<u32, String> {
 mod tests {
     use super::*;
     use crate::types::RedactionAnnotationData;
-    use base64::Engine;
     use lopdf::{Document, Object, Dictionary};
     use std::sync::atomic::{AtomicU64, Ordering};
 

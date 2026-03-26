@@ -10,6 +10,7 @@ import { DocumentView } from "./components/DocumentView";
 import type { DocumentViewHandle } from "./components/DocumentView";
 import { SaveDialog } from "./components/SaveDialog";
 import type { SaveDialogResult } from "./components/SaveDialog";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./App.css";
 
 function createTab(): Tab {
@@ -24,7 +25,7 @@ function getStoredTheme(): ThemeMode {
 
 function applyTheme(mode: ThemeMode) {
   const theme = mode === "auto" ? null : mode;
-  getCurrentWindow().setTheme(theme).catch(() => {});
+  getCurrentWindow().setTheme(theme).catch((e) => console.warn("Failed to set theme:", e));
 }
 
 function App() {
@@ -58,7 +59,7 @@ function App() {
   useEffect(() => {
     invoke("update_recent_files", {
       paths: recentFiles.map((f) => f.path),
-    }).catch(() => {});
+    }).catch((e) => console.warn("Failed to update recent files menu:", e));
   }, [recentFiles]);
 
   const handleNewTab = useCallback(() => {
@@ -232,20 +233,21 @@ function App() {
         onCycleTheme={cycleTheme}
       />
       {tabs.map((tab) => (
-        <DocumentView
-          key={tab.id}
-          ref={(handle) => {
-            if (handle) {
-              tabRefs.current.set(tab.id, handle);
-            } else {
-              tabRefs.current.delete(tab.id);
-            }
-          }}
-          isActive={tab.id === activeTabId}
-          recentFiles={recentFiles}
-          onAddRecent={addRecent}
-          onTabInfoChange={(info) => handleTabInfoChange(tab.id, info)}
-        />
+        <ErrorBoundary key={tab.id}>
+          <DocumentView
+            ref={(handle) => {
+              if (handle) {
+                tabRefs.current.set(tab.id, handle);
+              } else {
+                tabRefs.current.delete(tab.id);
+              }
+            }}
+            isActive={tab.id === activeTabId}
+            recentFiles={recentFiles}
+            onAddRecent={addRecent}
+            onTabInfoChange={(info) => handleTabInfoChange(tab.id, info)}
+          />
+        </ErrorBoundary>
       ))}
       {closePrompt && (
         <SaveDialog

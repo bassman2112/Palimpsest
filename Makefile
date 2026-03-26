@@ -8,11 +8,11 @@ build:
 
 check:
 	npx tsc --noEmit
-	cd src-tauri && cargo check
+	cd src-tauri && ~/.cargo/bin/cargo check
 
 clean:
 	rm -rf dist
-	cd src-tauri && cargo clean
+	cd src-tauri && ~/.cargo/bin/cargo clean
 
 test:
 	npx vitest run

@@ -16,6 +16,8 @@ interface MupdfViewportData {
   bounds: [number, number, number, number];
 }
 
+const PAGE_CACHE_MAX = 50;
+
 class MupdfDocument implements PdfDocument {
   private _pageCache = new Map<number, Page>();
 
@@ -31,10 +33,20 @@ class MupdfDocument implements PdfDocument {
 
   async getPage(pageNumber: number): Promise<PdfPage> {
     let page = this._pageCache.get(pageNumber);
-    if (!page) {
+    if (page) {
+      // Move to end for LRU ordering (Map preserves insertion order)
+      this._pageCache.delete(pageNumber);
+      this._pageCache.set(pageNumber, page);
+    } else {
       // MuPDF is 0-indexed, our interface is 1-indexed
       page = this._doc.loadPage(pageNumber - 1);
       this._pageCache.set(pageNumber, page);
+      // Evict oldest entry if cache exceeds limit
+      if (this._pageCache.size > PAGE_CACHE_MAX) {
+        const oldest = this._pageCache.keys().next().value!;
+        this._pageCache.get(oldest)!.destroy();
+        this._pageCache.delete(oldest);
+      }
     }
     return new MupdfPage(page, pageNumber);
   }
@@ -44,7 +56,13 @@ class MupdfDocument implements PdfDocument {
       const outline = this._doc.loadOutline();
       if (!outline || outline.length === 0) return null;
 
-      const convert = (items: any[]): OutlineItem[] =>
+      interface MupdfOutlineItem {
+        title?: string;
+        page?: number;
+        down?: MupdfOutlineItem[];
+      }
+
+      const convert = (items: MupdfOutlineItem[]): OutlineItem[] =>
         items.map((item) => ({
           title: item.title ?? "",
           pageNumber: typeof item.page === "number" ? item.page + 1 : null,
