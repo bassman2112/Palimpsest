@@ -92,8 +92,27 @@ export function DragPreview({
         );
       })()}
 
+      {/* Redaction preview */}
+      {drag && activeTool === "redaction" && (
+        <div
+          className="highlight-preview"
+          style={{
+            position: "absolute",
+            left: Math.min(drag.startX, drag.currentX),
+            top: Math.min(drag.startY, drag.currentY),
+            width: Math.abs(drag.currentX - drag.startX),
+            height: Math.abs(drag.currentY - drag.startY),
+            backgroundColor: "rgba(220, 38, 38, 0.3)",
+            border: "2px dashed rgba(220, 38, 38, 0.7)",
+            backgroundImage:
+              "repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(220, 38, 38, 0.15) 4px, rgba(220, 38, 38, 0.15) 8px)",
+          }}
+        />
+      )}
+
       {/* Highlight preview */}
       {drag && activeTool !== "underline" && activeTool !== "strikethrough"
+        && activeTool !== "redaction"
         && activeTool !== "shape-rectangle" && activeTool !== "shape-ellipse"
         && activeTool !== "shape-line" && activeTool !== "shape-arrow" && (
         <div

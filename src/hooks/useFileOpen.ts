@@ -128,6 +128,17 @@ function convertAnnotationData(data: AnnotationData[]): Annotation[] {
         backgroundColor: d.background_color ?? "transparent",
       };
     }
+    if (d.annotation_type === "redaction") {
+      return {
+        id: crypto.randomUUID(),
+        type: "redaction" as const,
+        pageNumber: d.page_number,
+        x: d.x,
+        y: d.y,
+        width: d.width,
+        height: d.height,
+      };
+    }
     return {
       id: crypto.randomUUID(),
       type: "sticky-note" as const,

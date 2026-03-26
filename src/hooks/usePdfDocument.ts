@@ -45,7 +45,7 @@ export function usePdfDocument(data: Uint8Array | null) {
         }
       } catch (err) {
         if (!cancelled) {
-          console.error("[usePdfDocument] Load error:", err);
+          console.error("Failed to load PDF document:", err);
           setState({ pdfDoc: null, pageDimensions: [], error: String(err) });
         }
       }

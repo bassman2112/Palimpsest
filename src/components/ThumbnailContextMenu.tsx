@@ -11,6 +11,11 @@ interface ThumbnailContextMenuProps {
   onReorder: () => void;
   onRotateClockwise?: () => void;
   onRotateCounterclockwise?: () => void;
+  onExtractPages?: () => void;
+  onSplitAfter?: () => void;
+  onInsertBlankPage?: () => void;
+  onInsertImagePage?: () => void;
+  extractLabel?: string;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -25,6 +30,11 @@ export function ThumbnailContextMenu({
   onReorder,
   onRotateClockwise,
   onRotateCounterclockwise,
+  onExtractPages,
+  onSplitAfter,
+  onInsertBlankPage,
+  onInsertImagePage,
+  extractLabel,
   onDelete,
   onClose,
 }: ThumbnailContextMenuProps) {
@@ -96,6 +106,45 @@ export function ThumbnailContextMenu({
         </button>
       )}
       {(onRotateClockwise || onRotateCounterclockwise) && (
+        <div className="context-menu-separator" />
+      )}
+      {onExtractPages && (
+        <button
+          className="context-menu-item"
+          onClick={() => { onExtractPages(); onClose(); }}
+        >
+          {extractLabel ?? "Extract Page"}
+        </button>
+      )}
+      {onSplitAfter && (
+        <button
+          className="context-menu-item"
+          disabled={isLast}
+          onClick={() => { onSplitAfter(); onClose(); }}
+        >
+          Split After This Page
+        </button>
+      )}
+      {(onExtractPages || onSplitAfter) && (
+        <div className="context-menu-separator" />
+      )}
+      {onInsertBlankPage && (
+        <button
+          className="context-menu-item"
+          onClick={() => { onInsertBlankPage(); onClose(); }}
+        >
+          Insert Blank Page
+        </button>
+      )}
+      {onInsertImagePage && (
+        <button
+          className="context-menu-item"
+          onClick={() => { onInsertImagePage(); onClose(); }}
+        >
+          Insert Image as Page
+        </button>
+      )}
+      {(onInsertBlankPage || onInsertImagePage) && (
         <div className="context-menu-separator" />
       )}
       <button

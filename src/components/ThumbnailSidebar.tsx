@@ -13,6 +13,10 @@ interface ThumbnailSidebarProps {
   onDeletePage?: (pageNumber: number) => void;
   onReorderPage?: (from: number, to: number) => void;
   onRotatePage?: (pageNumbers: number[], degrees: number) => void;
+  onExtractPages?: (pageNumbers: number[]) => void;
+  onSplitPdf?: (afterPage: number) => void;
+  onInsertBlankPage?: (afterPage: number) => void;
+  onInsertImagePage?: (afterPage: number) => void;
 }
 
 interface DragState {
@@ -30,6 +34,10 @@ export function ThumbnailSidebar({
   onDeletePage,
   onReorderPage,
   onRotatePage,
+  onExtractPages,
+  onSplitPdf,
+  onInsertBlankPage,
+  onInsertImagePage,
 }: ThumbnailSidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ pageNumber: number; x: number; y: number } | null>(null);
@@ -323,6 +331,10 @@ export function ThumbnailSidebar({
           onReorder={handleReorderFromMenu}
           onRotateClockwise={onRotatePage ? () => onRotatePage([contextMenu.pageNumber], 90) : undefined}
           onRotateCounterclockwise={onRotatePage ? () => onRotatePage([contextMenu.pageNumber], -90) : undefined}
+          onExtractPages={onExtractPages ? () => onExtractPages([contextMenu.pageNumber]) : undefined}
+          onSplitAfter={onSplitPdf ? () => onSplitPdf(contextMenu.pageNumber) : undefined}
+          onInsertBlankPage={onInsertBlankPage ? () => onInsertBlankPage(contextMenu.pageNumber) : undefined}
+          onInsertImagePage={onInsertImagePage ? () => onInsertImagePage(contextMenu.pageNumber) : undefined}
           onDelete={() => onDeletePage?.(contextMenu.pageNumber)}
           onClose={closeMenu}
         />

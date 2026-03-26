@@ -7,6 +7,7 @@ import { TextMarkup } from "./TextMarkup";
 import { InkStroke } from "./InkStroke";
 import { ShapeAnnotation } from "./ShapeAnnotation";
 import { TextAnnotationComponent } from "./TextAnnotation";
+import { RedactionRect } from "./RedactionRect";
 import { AnnotationContextMenu } from "./AnnotationContextMenu";
 import { DragPreview } from "./DragPreview";
 import { useInkDrawing } from "../hooks/useInkDrawing";
@@ -31,6 +32,7 @@ interface AnnotationOverlayProps {
   onAddAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   onDeleteAnnotation: (id: string) => void;
+  onApplyRedaction?: (annotationId: string) => void;
   pendingSignature?: string | null;
 }
 
@@ -61,6 +63,7 @@ export function AnnotationOverlay({
   onAddAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
+  onApplyRedaction,
   pendingSignature,
 }: AnnotationOverlayProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -144,6 +147,7 @@ export function AnnotationOverlay({
       !target.closest(".ink-annotation") &&
       !target.closest(".shape-annotation") &&
       !target.closest(".text-annotation") &&
+      !target.closest(".redaction-annotation") &&
       !target.closest(".annotation-context-menu")
     ) {
       setSelectedId(null);
@@ -161,6 +165,7 @@ export function AnnotationOverlay({
       target.closest(".ink-annotation") ||
       target.closest(".shape-annotation") ||
       target.closest(".text-annotation") ||
+      target.closest(".redaction-annotation") ||
       target.closest(".annotation-context-menu")
     ) {
       return;
@@ -229,6 +234,7 @@ export function AnnotationOverlay({
     }
 
     if (activeTool === "highlight" || activeTool === "underline" || activeTool === "strikethrough"
+      || activeTool === "redaction"
       || activeTool === "shape-rectangle" || activeTool === "shape-ellipse"
       || activeTool === "shape-line" || activeTool === "shape-arrow") {
       setDrag({ startX: x, startY: y, currentX: x, currentY: y });
@@ -299,6 +305,16 @@ export function AnnotationOverlay({
           y2: drag.currentY / pageH,
           color: shapeColor,
           strokeWidth,
+        });
+      } else if (activeTool === "redaction") {
+        onAddAnnotation({
+          id: crypto.randomUUID(),
+          type: "redaction",
+          pageNumber,
+          x: minX / pageW,
+          y: minY / pageH,
+          width: w / pageW,
+          height: h / pageH,
         });
       } else if (activeTool === "underline" || activeTool === "strikethrough") {
         const markupColor = highlightColor === DEFAULT_HIGHLIGHT_COLOR ? DEFAULT_TEXT_COLOR : highlightColor;
@@ -433,6 +449,20 @@ export function AnnotationOverlay({
             />
           );
         }
+        if (ann.type === "redaction") {
+          return (
+            <RedactionRect
+              key={ann.id}
+              annotation={ann}
+              dimension={dimension}
+              zoom={zoom}
+              selected={selectedId === ann.id}
+              onSelect={() => handleSelect(ann.id)}
+              onUpdate={(updates) => onUpdateAnnotation(ann.id, updates)}
+              onContextMenu={(x, y) => handleContextMenu(ann.id, x, y)}
+            />
+          );
+        }
         if (ann.type === "text") {
           return (
             <TextAnnotationComponent
@@ -490,6 +520,7 @@ export function AnnotationOverlay({
             onDeleteAnnotation(id);
             setSelectedId(null);
           }}
+          onApplyRedaction={onApplyRedaction}
           onClose={() => setContextMenu(null)}
         />
       )}

@@ -6,7 +6,7 @@ export interface PageDimension {
   height: number;
 }
 
-export type AnnotationTool = "none" | "highlight" | "sticky-note" | "text" | "signature" | "underline" | "strikethrough" | "ink" | "shape-rectangle" | "shape-ellipse" | "shape-line" | "shape-arrow";
+export type AnnotationTool = "none" | "highlight" | "sticky-note" | "text" | "signature" | "underline" | "strikethrough" | "ink" | "shape-rectangle" | "shape-ellipse" | "shape-line" | "shape-arrow" | "redaction";
 
 export interface HighlightAnnotation {
   id: string;
@@ -97,7 +97,17 @@ export interface ShapeAnnotation {
   strokeWidth: number;
 }
 
-export type Annotation = HighlightAnnotation | StickyNoteAnnotation | TextAnnotation | SignatureAnnotation | TextMarkupAnnotation | InkAnnotation | ShapeAnnotation;
+export interface RedactionAnnotation {
+  id: string;
+  type: "redaction";
+  pageNumber: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type Annotation = HighlightAnnotation | StickyNoteAnnotation | TextAnnotation | SignatureAnnotation | TextMarkupAnnotation | InkAnnotation | ShapeAnnotation | RedactionAnnotation;
 
 export interface MergeSource {
   path: string;

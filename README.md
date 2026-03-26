@@ -33,8 +33,14 @@ A free, open-source PDF viewer and editor. View, annotate, organize pages, and m
 ### Page Management
 - **Reorder** pages via drag-and-drop in sidebar, gallery, or context menu
 - **Delete** pages with hover button or context menu
-- **Multi-select** in gallery (click, Shift+click, Cmd/Ctrl+A)
+- **Multi-select** in gallery with selection bar (extract, rotate, delete)
+- **Extract pages** to a new PDF, **split PDF** at a page boundary
+- **Insert** blank pages or images as new pages
 - **Merge PDFs** — combine multiple documents into one
+
+### Security
+- **Password protection** — open encrypted PDFs, set or remove passwords (AES-256)
+- **Redaction** — drag to mark areas, then apply to permanently cover content with black
 
 ### Saving & Export
 - **Save**, **Save As**, and **Save As Locked** (flattens annotations into non-editable page content)
@@ -91,7 +97,7 @@ This bumps the version in `package.json` and `Cargo.toml`, commits, tags `v0.1.0
 - **Frontend:** React 19, TypeScript, Vite
 - **Desktop:** Tauri 2
 - **PDF rendering:** MuPDF WASM (default) or PDF.js — switchable at runtime
-- **PDF manipulation:** lopdf (Rust)
+- **PDF manipulation:** lopdf (Rust), qpdf (encryption)
 - **Testing:** Vitest + React Testing Library (frontend), cargo test (Rust)
 
 ## License

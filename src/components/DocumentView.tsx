@@ -9,7 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ask, save } from "@tauri-apps/plugin-dialog";
+import { ask, save, open } from "@tauri-apps/plugin-dialog";
 import { useFileOpen } from "../hooks/useFileOpen";
 import { usePdfDocument } from "../hooks/usePdfDocument";
 import { useAnnotations } from "../hooks/useAnnotations";
@@ -33,6 +33,7 @@ import {
   toShapeSaveData,
   toTextSaveData,
   toSignatureData,
+  toRedactionSaveData,
 } from "../lib/save";
 import type { FormFieldSaveData } from "../lib/save";
 
@@ -125,6 +126,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
     const strokeWidth = 2;
     const [hasFormChanges, setHasFormChanges] = useState(false);
     const [signatureSavePrompt, setSignatureSavePrompt] = useState(false);
+    const [redactionSavePrompt, setRedactionSavePrompt] = useState(false);
 
     const scrollToPageRef = useRef<((page: number) => void) | null>(null);
     const viewerContainerRef = useRef<HTMLDivElement | null>(null);
@@ -277,6 +279,15 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           });
         }
 
+        // Save redaction annotations
+        const redactData = toRedactionSaveData(annotations);
+        if (redactData.length > 0) {
+          await invoke("save_redaction_annotations", {
+            path: metadata.path,
+            annotations: redactData,
+          });
+        }
+
         // Embed signatures
         const sigData = toSignatureData(annotations);
         if (sigData.length > 0) {
@@ -319,8 +330,11 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
 
     const handleSave = useCallback(() => {
       const hasSignatures = annotations.some((a) => a.type === "signature");
+      const hasRedactions = annotations.some((a) => a.type === "redaction");
       if (hasSignatures) {
         setSignatureSavePrompt(true);
+      } else if (hasRedactions) {
+        setRedactionSavePrompt(true);
       } else {
         doSave();
       }
@@ -364,11 +378,106 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           if (hasChanges) await handleSave();
           pageUndoStackRef.current.push({ type: "rotate", pageNumbers: [...pageNumbers], degrees });
           if (pageUndoStackRef.current.length > 50) pageUndoStackRef.current.shift();
+          galleryPendingSelectionRef.current = [...pageNumbers];
           await invoke("rotate_pages", { path: metadata.path, pageNumbers, degrees });
           await openPath(metadata.path);
         } catch (err) {
           pageUndoStackRef.current.pop();
           console.error("Failed to rotate page:", err);
+        }
+      },
+      [metadata?.path, hasChanges, handleSave, openPath]
+    );
+
+    const handleExtractPages = useCallback(
+      async (pageNumbers: number[]) => {
+        if (!metadata?.path || pageNumbers.length === 0) return;
+        try {
+          if (hasChanges) await handleSave();
+          const dest = await save({
+            title: "Save Extracted Pages",
+            filters: [{ name: "PDF", extensions: ["pdf"] }],
+          });
+          if (!dest) return;
+          await invoke("extract_pages", { path: metadata.path, pageNumbers, dest });
+          await openPath(dest);
+        } catch (err) {
+          console.error("Failed to extract pages:", err);
+        }
+      },
+      [metadata?.path, hasChanges, handleSave, openPath]
+    );
+
+    const handleSplitPdf = useCallback(
+      async (afterPage: number) => {
+        if (!metadata?.path) return;
+        try {
+          if (hasChanges) await handleSave();
+          const destFirst = await save({
+            title: "Save First Part",
+            filters: [{ name: "PDF", extensions: ["pdf"] }],
+          });
+          if (!destFirst) return;
+          // Auto-name second half
+          const ext = destFirst.lastIndexOf(".");
+          const destSecond = ext > 0
+            ? destFirst.slice(0, ext) + "_part2" + destFirst.slice(ext)
+            : destFirst + "_part2";
+          await invoke("split_pdf", {
+            path: metadata.path,
+            afterPage,
+            destFirst,
+            destSecond,
+          });
+          await openPath(destFirst);
+        } catch (err) {
+          console.error("Failed to split PDF:", err);
+        }
+      },
+      [metadata?.path, hasChanges, handleSave, openPath]
+    );
+
+    const handleInsertBlankPage = useCallback(
+      async (afterPage: number) => {
+        if (!metadata?.path) return;
+        try {
+          if (hasChanges) await handleSave();
+          await invoke("insert_blank_page", {
+            path: metadata.path,
+            afterPage,
+            width: 612.0,
+            height: 792.0,
+          });
+          await openPath(metadata.path);
+        } catch (err) {
+          console.error("Failed to insert blank page:", err);
+        }
+      },
+      [metadata?.path, hasChanges, handleSave, openPath]
+    );
+
+    const handleInsertImagePage = useCallback(
+      async (afterPage: number) => {
+        if (!metadata?.path) return;
+        try {
+          const selected = await open({
+            title: "Select Image",
+            filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }],
+            multiple: false,
+          });
+          if (!selected) return;
+          const imagePath = selected;
+          // Read image file as base64 via Tauri
+          const imageBase64: string = await invoke("read_pdf_bytes", { path: imagePath });
+          if (hasChanges) await handleSave();
+          await invoke("insert_image_page", {
+            path: metadata.path,
+            afterPage,
+            imageBase64,
+          });
+          await openPath(metadata.path);
+        } catch (err) {
+          console.error("Failed to insert image page:", err);
         }
       },
       [metadata?.path, hasChanges, handleSave, openPath]
@@ -650,6 +759,51 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       }
     }, []);
 
+    const handleApplyRedactions = useCallback(async () => {
+      if (!metadata?.path) return;
+      const hasRedactions = annotations.some((a) => a.type === "redaction");
+      if (!hasRedactions) return;
+      try {
+        const confirmed = await ask(
+          "This will permanently cover the redacted areas with black rectangles. The content underneath will be visually hidden. Continue?",
+          { title: "Apply Redactions", kind: "warning", okLabel: "Apply", cancelLabel: "Cancel" }
+        );
+        if (!confirmed) return;
+        if (hasChanges) await doSave();
+        await invoke("apply_redactions", { path: metadata.path });
+        await openPath(metadata.path);
+      } catch (err) {
+        console.error("Failed to apply redactions:", err);
+      }
+    }, [metadata?.path, annotations, hasChanges, doSave, openPath]);
+
+    const handleApplySingleRedaction = useCallback(async (annotationId: string) => {
+      if (!metadata?.path) return;
+      const ann = annotations.find((a) => a.id === annotationId && a.type === "redaction");
+      if (!ann || ann.type !== "redaction") return;
+      try {
+        const confirmed = await ask(
+          "This will permanently and irreversibly cover this redacted area with black — the content underneath cannot be recovered. Continue?",
+          { title: "Apply Redaction", kind: "warning", okLabel: "Apply", cancelLabel: "Cancel" }
+        );
+        if (!confirmed) return;
+        if (hasChanges) await doSave();
+        await invoke("apply_single_redaction", {
+          path: metadata.path,
+          annotation: {
+            page_number: ann.pageNumber,
+            x: ann.x,
+            y: ann.y,
+            width: ann.width,
+            height: ann.height,
+          },
+        });
+        await openPath(metadata.path);
+      } catch (err) {
+        console.error("Failed to apply single redaction:", err);
+      }
+    }, [metadata?.path, annotations, hasChanges, doSave, openPath]);
+
     // When signature annotation is added, clear pending signature
     const handleAddAnnotation = useCallback((annotation: Annotation) => {
       add(annotation);
@@ -754,6 +908,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           onExitMerge={handleExitMerge}
           onSignatureClick={handleSignatureClick}
           onGoToPage={handleGoToPage}
+          onApplyRedactions={handleApplyRedactions}
+          hasRedactions={annotations.some((a) => a.type === "redaction")}
         />
 
         <div className="content">
@@ -784,6 +940,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                   onReorderPage={isMerging ? undefined : handleReorderPage}
                   onReorderPages={isMerging ? undefined : handleReorderPages}
                   onRotatePage={isMerging ? undefined : handleRotatePage}
+                  onExtractPages={isMerging ? undefined : handleExtractPages}
+                  onSplitPdf={isMerging ? undefined : handleSplitPdf}
+                  onInsertBlankPage={isMerging ? undefined : handleInsertBlankPage}
+                  onInsertImagePage={isMerging ? undefined : handleInsertImagePage}
                   pendingSelectionRef={galleryPendingSelectionRef}
                   mergePages={isMerging ? mergePages : undefined}
                   isMerging={isMerging}
@@ -805,6 +965,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                       onDeletePage={handleDeletePage}
                       onReorderPage={handleReorderPage}
                       onRotatePage={handleRotatePage}
+                      onExtractPages={handleExtractPages}
+                      onSplitPdf={handleSplitPdf}
+                      onInsertBlankPage={handleInsertBlankPage}
+                      onInsertImagePage={handleInsertImagePage}
                     />
                   )}
                   <PdfViewer
@@ -821,6 +985,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                     onAddAnnotation={handleAddAnnotation}
                     onUpdateAnnotation={update}
                     onDeleteAnnotation={remove}
+                    onApplyRedaction={handleApplySingleRedaction}
                     getPageAnnotations={getPageAnnotations}
                     searchQuery={searchQuery}
                     searchMatches={searchMatches}
@@ -897,6 +1062,49 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                   autoFocus
                 >
                   Save As Locked…
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {redactionSavePrompt && createPortal(
+          <div className="save-dialog-backdrop" onMouseDown={() => setRedactionSavePrompt(false)}>
+            <div className="save-dialog" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="save-dialog-body">
+                This document has pending redactions. Applying redactions will permanently and irreversibly cover the marked areas with black — the content underneath cannot be recovered.
+              </div>
+              <div className="save-dialog-actions">
+                <button
+                  className="save-dialog-btn"
+                  style={{ backgroundColor: "rgb(220, 38, 38)", color: "white" }}
+                  onClick={async () => {
+                    setRedactionSavePrompt(false);
+                    await doSave();
+                    if (metadata?.path) {
+                      await invoke("apply_redactions", { path: metadata.path });
+                      await openPath(metadata.path);
+                    }
+                  }}
+                >
+                  Apply Redactions
+                </button>
+                <button
+                  className="save-dialog-btn save-dialog-save"
+                  onClick={async () => {
+                    setRedactionSavePrompt(false);
+                    await doSave();
+                  }}
+                  autoFocus
+                >
+                  Save as Annotations
+                </button>
+                <button
+                  className="save-dialog-btn"
+                  onClick={() => setRedactionSavePrompt(false)}
+                >
+                  Cancel
                 </button>
               </div>
             </div>

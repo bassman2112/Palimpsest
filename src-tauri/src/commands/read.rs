@@ -8,6 +8,10 @@ use crate::pdf_utils::{
     get_page_media_box, parse_font_family_from_name,
 };
 
+fn load_pdf(path: &str) -> Result<Document, String> {
+    Document::load(path).map_err(|e| format!("Failed to load PDF: {}", e))
+}
+
 #[tauri::command]
 pub fn read_pdf_bytes(path: String) -> Result<String, String> {
     let bytes = fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
@@ -16,7 +20,7 @@ pub fn read_pdf_bytes(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn get_pdf_metadata(path: String) -> Result<PdfMetadata, String> {
-    let doc = Document::load(&path).map_err(|e| format!("Failed to parse PDF: {}", e))?;
+    let doc = load_pdf(&path)?;
     let page_count = doc.get_pages().len();
     Ok(PdfMetadata {
         page_count,
@@ -26,7 +30,7 @@ pub fn get_pdf_metadata(path: String) -> Result<PdfMetadata, String> {
 
 #[tauri::command]
 pub fn read_annotations(path: String) -> Result<Vec<AnnotationData>, String> {
-    let doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let doc = load_pdf(&path)?;
     let mut result = Vec::new();
 
     let pages: Vec<(u32, lopdf::ObjectId)> = doc.get_pages().into_iter().collect();
@@ -373,6 +377,28 @@ pub fn read_annotations(path: String) -> Result<Vec<AnnotationData>, String> {
                         height: 0.0,
                         text,
                         color,
+                        paths: None,
+                        stroke_width: None,
+                        shape: None,
+                        x1: None, y1: None, x2: None, y2: None,
+                        font_size: None, font_family: None, bold: None, italic: None, underline: None, background_color: None,
+                    });
+                }
+                "Redact" => {
+                    let norm_x = (rect.0 - x0) / page_w;
+                    let norm_y = (y1 - rect.3) / page_h;
+                    let norm_w = (rect.2 - rect.0) / page_w;
+                    let norm_h = (rect.3 - rect.1) / page_h;
+
+                    result.push(AnnotationData {
+                        annotation_type: "redaction".into(),
+                        page_number: *page_num as usize,
+                        x: norm_x,
+                        y: norm_y,
+                        width: norm_w,
+                        height: norm_h,
+                        text: String::new(),
+                        color: [1.0, 0.0, 0.0],
                         paths: None,
                         stroke_width: None,
                         shape: None,

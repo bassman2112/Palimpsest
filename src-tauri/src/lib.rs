@@ -16,6 +16,25 @@ pub fn run() {
         .manage(RecentPaths(Mutex::new(Vec::new())))
         .setup(|app| {
             menu::setup_menu(app)?;
+
+            #[cfg(target_os = "macos")]
+            {
+                use objc2::AnyThread;
+                use objc2::MainThreadMarker;
+                use objc2_foundation::NSData;
+                use objc2_app_kit::{NSApplication, NSImage};
+
+                let icon_bytes = include_bytes!("../icons/128x128@2x.png");
+                unsafe {
+                    let data = NSData::with_bytes(icon_bytes);
+                    if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+                        let mtm = MainThreadMarker::new_unchecked();
+                        let ns_app = NSApplication::sharedApplication(mtm);
+                        ns_app.setApplicationIconImage(Some(&image));
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -37,7 +56,14 @@ pub fn run() {
             commands::save_ink_annotations,
             commands::save_shape_annotations,
             commands::save_text_annotations,
-            commands::rotate_pages
+            commands::rotate_pages,
+            commands::extract_pages,
+            commands::split_pdf,
+            commands::insert_blank_page,
+            commands::insert_image_page,
+            commands::save_redaction_annotations,
+            commands::apply_single_redaction,
+            commands::apply_redactions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

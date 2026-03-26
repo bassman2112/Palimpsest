@@ -113,3 +113,12 @@ pub struct ShapeAnnotationData {
     pub color: [f64; 3],
     pub stroke_width: f64,
 }
+
+#[derive(Deserialize)]
+pub struct RedactionAnnotationData {
+    pub page_number: usize,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}

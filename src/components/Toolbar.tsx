@@ -34,6 +34,8 @@ interface ToolbarProps {
   onExitMerge?: () => void;
   onSignatureClick?: () => void;
   onGoToPage?: (page: number) => void;
+  onApplyRedactions?: () => void;
+  hasRedactions?: boolean;
 }
 
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5];
@@ -69,6 +71,8 @@ export function Toolbar({
   onExitMerge,
   onSignatureClick,
   onGoToPage,
+  onApplyRedactions,
+  hasRedactions,
 }: ToolbarProps) {
   const [zoomInput, setZoomInput] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState<string | null>(null);
@@ -305,7 +309,7 @@ export function Toolbar({
               <div className="more-tools-group" ref={moreToolsRef}>
                 <button
                   onClick={() => setMoreToolsOpen((o) => !o)}
-                  className={["underline", "strikethrough", "ink", "shape-rectangle", "shape-ellipse", "shape-line", "shape-arrow"].includes(activeTool) ? "tool-active" : ""}
+                  className={["underline", "strikethrough", "ink", "redaction", "shape-rectangle", "shape-ellipse", "shape-line", "shape-arrow"].includes(activeTool) ? "tool-active" : ""}
                   data-tooltip="More Tools"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -405,6 +409,20 @@ export function Toolbar({
                       </svg>
                       Arrow
                     </button>
+                    <div className="more-tools-divider" />
+                    <button
+                      className={`more-tools-option${activeTool === "redaction" ? " more-tools-active" : ""}`}
+                      onClick={() => {
+                        setMoreToolsOpen(false);
+                        onToolChange(activeTool === "redaction" ? "none" : "redaction");
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="4" width="12" height="8" rx="1" fill="rgba(220,38,38,0.3)" stroke="rgb(220,38,38)" />
+                        <line x1="4" y1="8" x2="12" y2="8" stroke="rgb(220,38,38)" />
+                      </svg>
+                      Redact
+                    </button>
                   </div>
                 )}
               </div>
@@ -444,6 +462,21 @@ export function Toolbar({
                       >
                         Save As Locked…
                       </button>
+                    )}
+                    {onApplyRedactions && hasRedactions && (
+                      <>
+                        <div className="save-dropdown-divider" />
+                        <button
+                          className="save-dropdown-option"
+                          onClick={() => {
+                            setSaveMenuOpen(false);
+                            onApplyRedactions();
+                          }}
+                          style={{ color: "rgb(220, 38, 38)" }}
+                        >
+                          Apply Redactions
+                        </button>
+                      </>
                     )}
                     {onAddDocument && (
                       <>

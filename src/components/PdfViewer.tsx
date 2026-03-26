@@ -22,6 +22,7 @@ interface PdfViewerProps {
   onAddAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   onDeleteAnnotation: (id: string) => void;
+  onApplyRedaction?: (annotationId: string) => void;
   getPageAnnotations: (pageNumber: number) => Annotation[];
   searchQuery: string;
   searchMatches: SearchMatch[];
@@ -43,6 +44,7 @@ export function PdfViewer({
   onAddAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
+  onApplyRedaction,
   getPageAnnotations,
   searchQuery,
   searchMatches,
@@ -140,6 +142,7 @@ export function PdfViewer({
             onAddAnnotation={onAddAnnotation}
             onUpdateAnnotation={onUpdateAnnotation}
             onDeleteAnnotation={onDeleteAnnotation}
+            onApplyRedaction={onApplyRedaction}
             searchQuery={searchQuery}
             searchMatches={pageMatches}
             selectedMatchIndex={selectedMatchIndex}

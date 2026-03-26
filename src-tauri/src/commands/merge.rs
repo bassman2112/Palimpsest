@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::types::MergePageSpec;
 
 /// BFS to collect all ObjectIds reachable from `start_id`, skipping `/Parent` keys.
-fn collect_reachable(doc: &Document, start_id: ObjectId) -> Vec<ObjectId> {
+pub(crate) fn collect_reachable(doc: &Document, start_id: ObjectId) -> Vec<ObjectId> {
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     visited.insert(start_id);
@@ -19,7 +19,7 @@ fn collect_reachable(doc: &Document, start_id: ObjectId) -> Vec<ObjectId> {
     visited.into_iter().collect()
 }
 
-fn collect_refs_from_object(
+pub(crate) fn collect_refs_from_object(
     obj: &Object,
     key: &[u8],
     visited: &mut HashSet<ObjectId>,
@@ -52,7 +52,7 @@ fn collect_refs_from_object(
 }
 
 /// Recursively rewrite all Object::Reference(old) -> Object::Reference(new) using the mapping.
-fn remap_references(obj: &mut Object, map: &HashMap<ObjectId, ObjectId>) {
+pub(crate) fn remap_references(obj: &mut Object, map: &HashMap<ObjectId, ObjectId>) {
     match obj {
         Object::Reference(id) => {
             if let Some(new_id) = map.get(id) {
@@ -80,7 +80,7 @@ fn remap_references(obj: &mut Object, map: &HashMap<ObjectId, ObjectId>) {
 
 /// Deep-copy a page and all its reachable objects from source into target.
 /// Returns the new ObjectId of the page in target.
-fn import_page(
+pub(crate) fn import_page(
     target: &mut Document,
     source: &Document,
     page_id: ObjectId,

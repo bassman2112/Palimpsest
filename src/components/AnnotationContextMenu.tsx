@@ -14,12 +14,13 @@ interface AnnotationContextMenuProps {
   annotations: Annotation[];
   onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   onDeleteAnnotation: (id: string) => void;
+  onApplyRedaction?: (annotationId: string) => void;
   onClose: () => void;
 }
 
 export const AnnotationContextMenu = forwardRef<HTMLDivElement, AnnotationContextMenuProps>(
   function AnnotationContextMenu(
-    { contextMenu, annotations, onUpdateAnnotation, onDeleteAnnotation, onClose },
+    { contextMenu, annotations, onUpdateAnnotation, onDeleteAnnotation, onApplyRedaction, onClose },
     ref,
   ) {
     const handleRecolor = useCallback(
@@ -206,6 +207,18 @@ export const AnnotationContextMenu = forwardRef<HTMLDivElement, AnnotationContex
               </button>
             ))}
           </div>
+        )}
+        {contextMenu.annotationType === "redaction" && onApplyRedaction && (
+          <button
+            className="annotation-context-delete"
+            style={{ color: "#dc2626" }}
+            onClick={() => {
+              onApplyRedaction(contextMenu.annotationId);
+              onClose();
+            }}
+          >
+            Apply Redaction
+          </button>
         )}
         <button className="annotation-context-delete" onClick={handleDelete}>
           Delete

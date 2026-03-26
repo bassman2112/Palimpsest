@@ -950,6 +950,19 @@ html, body, #root {
   background: #b91c1c;
 }
 
+.gallery-selection-action {
+  padding: 5px 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.gallery-selection-action:hover {
+  background: #e8e8e8;
+}
+
 .gallery-selection-clear {
   padding: 5px 14px;
   border: 1px solid #ccc;
@@ -1576,6 +1589,16 @@ html, body, #root {
   .gallery-selection-bar {
     background: #2a2a2a;
     border-top-color: #444;
+  }
+
+  .gallery-selection-action {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .gallery-selection-action:hover {
+    background: #444;
   }
 
   .gallery-selection-clear {

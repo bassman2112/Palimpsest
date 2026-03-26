@@ -59,6 +59,14 @@ export interface SignatureEmbedData {
   image_base64: string;
 }
 
+export interface RedactionSaveData {
+  page_number: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface FormFieldSaveData {
   field_name: string;
   value: string;
@@ -173,6 +181,21 @@ export function toSignatureData(annotations: Annotation[]): SignatureEmbedData[]
         width: sig.width,
         height: sig.height,
         image_base64: base64,
+      };
+    });
+}
+
+export function toRedactionSaveData(annotations: Annotation[]): RedactionSaveData[] {
+  return annotations
+    .filter((a) => a.type === "redaction")
+    .map((a) => {
+      const r = a as Extract<Annotation, { type: "redaction" }>;
+      return {
+        page_number: r.pageNumber,
+        x: r.x,
+        y: r.y,
+        width: r.width,
+        height: r.height,
       };
     });
 }

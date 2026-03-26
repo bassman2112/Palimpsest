@@ -14,6 +14,10 @@ interface PageGalleryProps {
   onReorderPage?: (from: number, to: number) => void;
   onReorderPages?: (pages: number[], insertBefore: number) => void;
   onRotatePage?: (pageNumbers: number[], degrees: number) => void;
+  onExtractPages?: (pageNumbers: number[]) => void;
+  onSplitPdf?: (afterPage: number) => void;
+  onInsertBlankPage?: (afterPage: number) => void;
+  onInsertImagePage?: (afterPage: number) => void;
   pendingSelectionRef?: React.RefObject<number[] | null>;
   // Merge mode props
   mergePages?: MergePage[];
@@ -51,6 +55,10 @@ export function PageGallery({
   onReorderPage,
   onReorderPages,
   onRotatePage,
+  onExtractPages,
+  onSplitPdf,
+  onInsertBlankPage,
+  onInsertImagePage,
   pendingSelectionRef,
   mergePages,
   isMerging,
@@ -611,6 +619,20 @@ export function PageGallery({
               : [contextMenu.pageNumber];
             onRotatePage(pages, -90);
           } : undefined}
+          onExtractPages={onExtractPages ? () => {
+            const pages = selectedPages.has(contextMenu.pageNumber) && selectedPages.size > 1
+              ? [...selectedPages].sort((a, b) => a - b)
+              : [contextMenu.pageNumber];
+            onExtractPages(pages);
+          } : undefined}
+          extractLabel={
+            selectedPages.has(contextMenu.pageNumber) && selectedPages.size > 1
+              ? `Extract ${selectedPages.size} Pages`
+              : "Extract Page"
+          }
+          onSplitAfter={onSplitPdf ? () => onSplitPdf(contextMenu.pageNumber) : undefined}
+          onInsertBlankPage={onInsertBlankPage ? () => onInsertBlankPage(contextMenu.pageNumber) : undefined}
+          onInsertImagePage={onInsertImagePage ? () => onInsertImagePage(contextMenu.pageNumber) : undefined}
           onDelete={() => onDeletePage?.(contextMenu.pageNumber)}
           onClose={closeMenu}
         />
@@ -619,8 +641,32 @@ export function PageGallery({
       {hasSelection && (
         <div className="gallery-selection-bar">
           <span>{selectionCount} page{selectionCount !== 1 ? "s" : ""} selected</span>
+          {!inMerge && onExtractPages && (
+            <button
+              onClick={() => onExtractPages([...selectedPages].sort((a, b) => a - b))}
+              className="gallery-selection-action"
+            >
+              Extract
+            </button>
+          )}
+          {!inMerge && onRotatePage && (
+            <>
+              <button
+                onClick={() => onRotatePage([...selectedPages], -90)}
+                className="gallery-selection-action"
+              >
+                Rotate Left
+              </button>
+              <button
+                onClick={() => onRotatePage([...selectedPages], 90)}
+                className="gallery-selection-action"
+              >
+                Rotate Right
+              </button>
+            </>
+          )}
           <button onClick={handleDeleteSelected} className="gallery-selection-delete">
-            Delete Selected
+            Delete
           </button>
           <button
             onClick={() => {

@@ -1,4 +1,6 @@
-use lopdf::{Document, Object};
+use lopdf::{Document, Object, Dictionary, Stream};
+
+use super::merge;
 
 #[tauri::command]
 pub fn reorder_page(path: String, from: u32, to: u32) -> Result<(), String> {
@@ -208,6 +210,246 @@ pub fn rotate_pages(path: String, page_numbers: Vec<u32>, degrees: i32) -> Resul
     Ok(())
 }
 
+#[tauri::command]
+pub fn extract_pages(path: String, page_numbers: Vec<u32>, dest: String) -> Result<(), String> {
+    if page_numbers.is_empty() {
+        return Err("No pages to extract".into());
+    }
+    let source = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let source_pages = source.get_pages();
+
+    let mut target = Document::with_version("1.7");
+    let pages_dict = Dictionary::from_iter(vec![
+        ("Type", Object::Name(b"Pages".to_vec())),
+        ("Kids", Object::Array(vec![])),
+        ("Count", Object::Integer(0)),
+    ]);
+    let pages_id = target.add_object(Object::Dictionary(pages_dict));
+    let catalog_dict = Dictionary::from_iter(vec![
+        ("Type", Object::Name(b"Catalog".to_vec())),
+        ("Pages", Object::Reference(pages_id)),
+    ]);
+    let catalog_id = target.add_object(Object::Dictionary(catalog_dict));
+    target.trailer.set("Root", Object::Reference(catalog_id));
+
+    let mut kids: Vec<Object> = Vec::new();
+    for &pn in &page_numbers {
+        let page_obj_id = source_pages
+            .get(&pn)
+            .ok_or_else(|| format!("Page {} not found (PDF has {} pages)", pn, source_pages.len()))?;
+        let new_page_id = merge::import_page(&mut target, &source, *page_obj_id, pages_id)?;
+        kids.push(Object::Reference(new_page_id));
+    }
+
+    if let Ok(obj) = target.get_object_mut(pages_id) {
+        if let Ok(dict) = obj.as_dict_mut() {
+            dict.set("Kids", Object::Array(kids.clone()));
+            dict.set("Count", Object::Integer(kids.len() as i64));
+        }
+    }
+
+    target.renumber_objects();
+    target.compress();
+    target.save(&dest).map_err(|e| format!("Failed to save extracted PDF: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn split_pdf(
+    path: String,
+    after_page: u32,
+    dest_first: String,
+    dest_second: String,
+) -> Result<(), String> {
+    let source = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let source_pages = source.get_pages();
+    let total = source_pages.len() as u32;
+
+    if after_page < 1 || after_page >= total {
+        return Err(format!("after_page must be between 1 and {} (exclusive)", total));
+    }
+
+    // Helper: build a new doc from a range of pages
+    let build_part = |range: std::ops::RangeInclusive<u32>| -> Result<Document, String> {
+        let mut target = Document::with_version("1.7");
+        let pages_dict = Dictionary::from_iter(vec![
+            ("Type", Object::Name(b"Pages".to_vec())),
+            ("Kids", Object::Array(vec![])),
+            ("Count", Object::Integer(0)),
+        ]);
+        let pages_id = target.add_object(Object::Dictionary(pages_dict));
+        let catalog_dict = Dictionary::from_iter(vec![
+            ("Type", Object::Name(b"Catalog".to_vec())),
+            ("Pages", Object::Reference(pages_id)),
+        ]);
+        let catalog_id = target.add_object(Object::Dictionary(catalog_dict));
+        target.trailer.set("Root", Object::Reference(catalog_id));
+
+        let mut kids: Vec<Object> = Vec::new();
+        for pn in range {
+            let page_obj_id = source_pages
+                .get(&pn)
+                .ok_or_else(|| format!("Page {} not found", pn))?;
+            let new_page_id = merge::import_page(&mut target, &source, *page_obj_id, pages_id)?;
+            kids.push(Object::Reference(new_page_id));
+        }
+
+        if let Ok(obj) = target.get_object_mut(pages_id) {
+            if let Ok(dict) = obj.as_dict_mut() {
+                dict.set("Kids", Object::Array(kids.clone()));
+                dict.set("Count", Object::Integer(kids.len() as i64));
+            }
+        }
+        target.renumber_objects();
+        target.compress();
+        Ok(target)
+    };
+
+    let mut first = build_part(1..=after_page)?;
+    first.save(&dest_first).map_err(|e| format!("Failed to save first part: {}", e))?;
+
+    let mut second = build_part((after_page + 1)..=total)?;
+    second.save(&dest_second).map_err(|e| format!("Failed to save second part: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn insert_blank_page(path: String, after_page: u32, width: f64, height: f64) -> Result<(), String> {
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let total = doc.get_pages().len() as u32;
+    if after_page > total {
+        return Err(format!("after_page {} out of range (0-{})", after_page, total));
+    }
+
+    let catalog = doc.catalog().map_err(|e| format!("No catalog: {}", e))?.clone();
+    let pages_ref = catalog.get(b"Pages").map_err(|e| format!("No Pages: {}", e))?;
+    let pages_id = match pages_ref {
+        Object::Reference(id) => *id,
+        _ => return Err("Pages is not a reference".into()),
+    };
+
+    let mut page_dict = Dictionary::new();
+    page_dict.set("Type", Object::Name(b"Page".to_vec()));
+    page_dict.set("Parent", Object::Reference(pages_id));
+    page_dict.set("MediaBox", Object::Array(vec![
+        Object::Integer(0), Object::Integer(0),
+        Object::Real(width as f32), Object::Real(height as f32),
+    ]));
+    let page_id = doc.add_object(Object::Dictionary(page_dict));
+
+    let pages_obj = doc.get_object_mut(pages_id).map_err(|e| format!("Failed to get Pages: {}", e))?;
+    let dict = pages_obj.as_dict_mut().map_err(|e| format!("Pages not a dict: {}", e))?;
+    let kids = dict.get_mut(b"Kids").map_err(|e| format!("No Kids: {}", e))?;
+    let kids_arr = match kids {
+        Object::Array(ref mut arr) => arr,
+        _ => return Err("Kids is not an array".into()),
+    };
+    kids_arr.insert(after_page as usize, Object::Reference(page_id));
+
+    let new_count = kids_arr.len() as i64;
+    let pages_obj2 = doc.get_object_mut(pages_id).map_err(|e| format!("Failed: {}", e))?;
+    let dict2 = pages_obj2.as_dict_mut().map_err(|e| format!("Failed: {}", e))?;
+    dict2.set("Count", Object::Integer(new_count));
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn insert_image_page(path: String, after_page: u32, image_base64: String) -> Result<(), String> {
+    use base64::Engine;
+
+    let image_bytes = base64::engine::general_purpose::STANDARD
+        .decode(&image_base64)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    // Read image dimensions
+    let reader = image::ImageReader::new(std::io::Cursor::new(&image_bytes))
+        .with_guessed_format()
+        .map_err(|e| format!("Failed to read image format: {}", e))?;
+    let img = reader.decode().map_err(|e| format!("Failed to decode image: {}", e))?;
+    let img_w = img.width();
+    let img_h = img.height();
+
+    // Re-encode as JPEG to avoid PNG alpha complexity
+    let mut jpeg_buf = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut jpeg_buf, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("Failed to encode JPEG: {}", e))?;
+    let jpeg_bytes = jpeg_buf.into_inner();
+
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let total = doc.get_pages().len() as u32;
+    if after_page > total {
+        return Err(format!("after_page {} out of range (0-{})", after_page, total));
+    }
+
+    // Create Image XObject (DCTDecode = JPEG)
+    let mut img_dict = Dictionary::new();
+    img_dict.set("Type", Object::Name(b"XObject".to_vec()));
+    img_dict.set("Subtype", Object::Name(b"Image".to_vec()));
+    img_dict.set("Width", Object::Integer(img_w as i64));
+    img_dict.set("Height", Object::Integer(img_h as i64));
+    img_dict.set("ColorSpace", Object::Name(b"DeviceRGB".to_vec()));
+    img_dict.set("BitsPerComponent", Object::Integer(8));
+    img_dict.set("Filter", Object::Name(b"DCTDecode".to_vec()));
+    img_dict.set("Length", Object::Integer(jpeg_bytes.len() as i64));
+    let img_stream = Stream::new(img_dict, jpeg_bytes);
+    let img_id = doc.add_object(Object::Stream(img_stream));
+
+    // Page size = image size in points (1px = 1pt)
+    let page_w = img_w as f64;
+    let page_h = img_h as f64;
+
+    // Content stream: draw image scaled to full page
+    let content = format!("q {} 0 0 {} 0 0 cm /Img Do Q", page_w, page_h);
+    let content_stream = Stream::new(Dictionary::new(), content.into_bytes());
+    let content_id = doc.add_object(Object::Stream(content_stream));
+
+    // Resources with XObject reference
+    let mut xobject_dict = Dictionary::new();
+    xobject_dict.set("Img", Object::Reference(img_id));
+    let mut resources = Dictionary::new();
+    resources.set("XObject", Object::Dictionary(xobject_dict));
+
+    let catalog = doc.catalog().map_err(|e| format!("No catalog: {}", e))?.clone();
+    let pages_ref = catalog.get(b"Pages").map_err(|e| format!("No Pages: {}", e))?;
+    let pages_id = match pages_ref {
+        Object::Reference(id) => *id,
+        _ => return Err("Pages is not a reference".into()),
+    };
+
+    // Create page dict
+    let mut page_dict = Dictionary::new();
+    page_dict.set("Type", Object::Name(b"Page".to_vec()));
+    page_dict.set("Parent", Object::Reference(pages_id));
+    page_dict.set("MediaBox", Object::Array(vec![
+        Object::Integer(0), Object::Integer(0),
+        Object::Real(page_w as f32), Object::Real(page_h as f32),
+    ]));
+    page_dict.set("Contents", Object::Reference(content_id));
+    page_dict.set("Resources", Object::Dictionary(resources));
+    let page_id = doc.add_object(Object::Dictionary(page_dict));
+
+    // Insert into Kids array
+    let pages_obj = doc.get_object_mut(pages_id).map_err(|e| format!("Failed to get Pages: {}", e))?;
+    let dict = pages_obj.as_dict_mut().map_err(|e| format!("Pages not a dict: {}", e))?;
+    let kids = dict.get_mut(b"Kids").map_err(|e| format!("No Kids: {}", e))?;
+    let kids_arr = match kids {
+        Object::Array(ref mut arr) => arr,
+        _ => return Err("Kids is not an array".into()),
+    };
+    kids_arr.insert(after_page as usize, Object::Reference(page_id));
+
+    let new_count = kids_arr.len() as i64;
+    let pages_obj2 = doc.get_object_mut(pages_id).map_err(|e| format!("Failed: {}", e))?;
+    let dict2 = pages_obj2.as_dict_mut().map_err(|e| format!("Failed: {}", e))?;
+    dict2.set("Count", Object::Integer(new_count));
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,6 +625,67 @@ mod tests {
         rotate_pages(path.clone(), vec![1], 270).unwrap();
         rotate_pages(path.clone(), vec![1], 90).unwrap();
         assert_eq!(get_page_rotation(&path, 1), 0);
+        std::fs::remove_file(&path).ok();
+    }
+
+    fn temp_path(suffix: &str) -> String {
+        let count = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let path = std::env::temp_dir().join(format!(
+            "palimpsest_test_{}_{}_{}.pdf", std::process::id(), count, suffix
+        ));
+        path.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn extract_pages_subset() {
+        let path = build_temp_pdf(5);
+        let dest = temp_path("extract");
+        extract_pages(path.clone(), vec![2, 4], dest.clone()).unwrap();
+        let doc = Document::load(&dest).unwrap();
+        assert_eq!(doc.get_pages().len(), 2);
+        std::fs::remove_file(&path).ok();
+        std::fs::remove_file(&dest).ok();
+    }
+
+    #[test]
+    fn split_pdf_middle() {
+        let path = build_temp_pdf(5);
+        let dest1 = temp_path("split1");
+        let dest2 = temp_path("split2");
+        split_pdf(path.clone(), 2, dest1.clone(), dest2.clone()).unwrap();
+        let doc1 = Document::load(&dest1).unwrap();
+        let doc2 = Document::load(&dest2).unwrap();
+        assert_eq!(doc1.get_pages().len(), 2);
+        assert_eq!(doc2.get_pages().len(), 3);
+        std::fs::remove_file(&path).ok();
+        std::fs::remove_file(&dest1).ok();
+        std::fs::remove_file(&dest2).ok();
+    }
+
+    #[test]
+    fn insert_blank_page_middle() {
+        let path = build_temp_pdf(3);
+        insert_blank_page(path.clone(), 2, 612.0, 792.0).unwrap();
+        let doc = Document::load(&path).unwrap();
+        assert_eq!(doc.get_pages().len(), 4);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn insert_image_page_test() {
+        use base64::Engine;
+
+        let path = build_temp_pdf(2);
+
+        // Create a minimal 2x2 JPEG in memory using the image crate
+        let img = image::RgbImage::from_fn(2, 2, |_, _| image::Rgb([255u8, 0, 0]));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buf, image::ImageFormat::Jpeg).unwrap();
+        let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+
+        insert_image_page(path.clone(), 1, b64).unwrap();
+        let doc = Document::load(&path).unwrap();
+        assert_eq!(doc.get_pages().len(), 3);
         std::fs::remove_file(&path).ok();
     }
 }

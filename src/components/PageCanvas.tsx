@@ -17,6 +17,7 @@ interface PageCanvasProps {
   onAddAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   onDeleteAnnotation: (id: string) => void;
+  onApplyRedaction?: (annotationId: string) => void;
   searchQuery: string;
   searchMatches: SearchMatch[];
   selectedMatchIndex: number;
@@ -35,6 +36,7 @@ export function PageCanvas({
   onAddAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
+  onApplyRedaction,
   searchQuery,
   searchMatches,
   selectedMatchIndex,
@@ -232,6 +234,7 @@ export function PageCanvas({
             onAddAnnotation={onAddAnnotation}
             onUpdateAnnotation={onUpdateAnnotation}
             onDeleteAnnotation={onDeleteAnnotation}
+            onApplyRedaction={onApplyRedaction}
             pendingSignature={pendingSignature}
           />
         </>

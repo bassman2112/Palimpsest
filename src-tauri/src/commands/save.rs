@@ -1,9 +1,10 @@
 use base64::Engine;
-use lopdf::{Document, Object, Dictionary, ObjectId, StringFormat};
+use lopdf::{Document, Object, Dictionary, ObjectId, StringFormat, Stream};
 
 use crate::types::{
     AnnotationData, FormFieldUpdate, SignatureImageData,
     InkAnnotationData, TextAnnotationData, ShapeAnnotationData,
+    RedactionAnnotationData,
 };
 use crate::pdf_utils::{
     PALIMPSEST_MARKER, resolve_object,
@@ -716,4 +717,354 @@ pub fn embed_signatures(path: String, signatures: Vec<SignatureImageData>) -> Re
 
     doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
     Ok(())
+}
+
+// --- Redaction ---
+
+#[tauri::command]
+pub fn save_redaction_annotations(path: String, annotations: Vec<RedactionAnnotationData>) -> Result<(), String> {
+    if annotations.is_empty() {
+        return Ok(());
+    }
+
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+
+    // Remove existing palimpsest Redact annotations
+    remove_palimpsest_annots_by_subtype(&mut doc, &pages, &[b"Redact"]);
+
+    for ann in &annotations {
+        let page_entry = pages.iter().find(|(n, _)| *n as usize == ann.page_number);
+        let page_id = match page_entry {
+            Some((_, id)) => *id,
+            None => continue,
+        };
+
+        let (x0, _y0, x1, y1) = get_page_media_box(&doc, page_id)?;
+        let page_w = x1 - x0;
+        let page_h = y1 - _y0;
+
+        let pdf_x = x0 + ann.x * page_w;
+        let pdf_y2 = y1 - ann.y * page_h;
+        let pdf_x2 = x0 + (ann.x + ann.width) * page_w;
+        let pdf_y = y1 - (ann.y + ann.height) * page_h;
+
+        let rect = vec![
+            Object::Real(pdf_x as f32),
+            Object::Real(pdf_y as f32),
+            Object::Real(pdf_x2 as f32),
+            Object::Real(pdf_y2 as f32),
+        ];
+
+        let color = vec![
+            Object::Real(1.0),
+            Object::Real(0.0),
+            Object::Real(0.0),
+        ];
+
+        let mut annot_dict = Dictionary::new();
+        annot_dict.set("Type", Object::Name(b"Annot".to_vec()));
+        annot_dict.set("Subtype", Object::Name(b"Redact".to_vec()));
+        annot_dict.set("Rect", Object::Array(rect));
+        annot_dict.set("C", Object::Array(color));
+        annot_dict.set("IC", Object::Array(vec![
+            Object::Real(0.0),
+            Object::Real(0.0),
+            Object::Real(0.0),
+        ]));
+        annot_dict.set("F", Object::Integer(4));
+        annot_dict.set("NM", Object::String(
+            PALIMPSEST_MARKER.to_vec(),
+            StringFormat::Literal,
+        ));
+
+        let annot_id = doc.add_object(Object::Dictionary(annot_dict));
+        let mut existing_annots = get_existing_annots(&doc, page_id);
+        existing_annots.push(Object::Reference(annot_id));
+        if let Ok(page_obj) = doc.get_object_mut(page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                dict.set("Annots", Object::Array(existing_annots));
+            }
+        }
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn apply_single_redaction(path: String, annotation: RedactionAnnotationData) -> Result<(), String> {
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+
+    let page_entry = pages.iter().find(|(n, _)| *n as usize == annotation.page_number);
+    let page_id = match page_entry {
+        Some((_, id)) => *id,
+        None => return Err("Page not found".to_string()),
+    };
+
+    let (x0, _y0, x1, y1) = get_page_media_box(&doc, page_id)?;
+    let page_w = x1 - x0;
+    let page_h = y1 - _y0;
+
+    let pdf_x = x0 + annotation.x * page_w;
+    let pdf_y2 = y1 - annotation.y * page_h;
+    let pdf_x2 = x0 + (annotation.x + annotation.width) * page_w;
+    let pdf_y = y1 - (annotation.y + annotation.height) * page_h;
+
+    // Draw black filled rectangle in page content
+    let content_ops = format!(
+        "q 0 0 0 rg {} {} {} {} re f Q\n",
+        pdf_x, pdf_y, pdf_x2 - pdf_x, pdf_y2 - pdf_y
+    );
+    let stream_dict = Dictionary::new();
+    let stream = Stream::new(stream_dict, content_ops.into_bytes());
+    let stream_id = doc.add_object(Object::Stream(stream));
+
+    // Remove matching /Redact annotation from the page (by rect proximity)
+    let existing = get_existing_annots(&doc, page_id);
+    let mut kept: Vec<Object> = Vec::new();
+    let mut removed_one = false;
+
+    for entry in &existing {
+        if !removed_one {
+            let resolved = resolve_object(&doc, entry).ok();
+            if let Some(Object::Dictionary(dict)) = &resolved {
+                let is_redact = matches!(dict.get(b"Subtype"), Ok(Object::Name(n)) if n == b"Redact");
+                if is_redact {
+                    if let Ok(rect_obj) = dict.get(b"Rect") {
+                        if let Ok(Object::Array(arr)) = resolve_object(&doc, rect_obj) {
+                            if let Ok((rx0, ry0, rx1, ry1)) = crate::pdf_utils::parse_rect(&arr) {
+                                let tolerance = 1.0;
+                                if (rx0 - pdf_x).abs() < tolerance
+                                    && (ry0 - pdf_y).abs() < tolerance
+                                    && (rx1 - pdf_x2).abs() < tolerance
+                                    && (ry1 - pdf_y2).abs() < tolerance
+                                {
+                                    removed_one = true;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        kept.push(entry.clone());
+    }
+
+    // Append content stream and update annots
+    if let Ok(page_obj) = doc.get_object(page_id) {
+        let page_dict = page_obj.as_dict().map_err(|e| format!("Page not dict: {}", e))?.clone();
+        let mut contents_arr: Vec<Object> = Vec::new();
+        if let Ok(contents) = page_dict.get(b"Contents") {
+            match contents {
+                Object::Reference(id) => contents_arr.push(Object::Reference(*id)),
+                Object::Array(arr) => contents_arr = arr.clone(),
+                _ => {}
+            }
+        }
+        contents_arr.push(Object::Reference(stream_id));
+
+        if let Ok(page_obj_mut) = doc.get_object_mut(page_id) {
+            if let Ok(dict) = page_obj_mut.as_dict_mut() {
+                dict.set("Contents", Object::Array(contents_arr));
+                if kept.is_empty() {
+                    dict.remove(b"Annots");
+                } else {
+                    dict.set("Annots", Object::Array(kept));
+                }
+            }
+        }
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn apply_redactions(path: String) -> Result<u32, String> {
+    let mut doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+    let mut redaction_count: u32 = 0;
+
+    for (_page_num, page_id) in &pages {
+        let existing = get_existing_annots(&doc, *page_id);
+        let mut kept: Vec<Object> = Vec::new();
+        let mut redact_rects: Vec<(f64, f64, f64, f64)> = Vec::new();
+
+        for entry in &existing {
+            let resolved = match resolve_object(&doc, entry) {
+                Ok(obj) => obj,
+                Err(_) => { kept.push(entry.clone()); continue; }
+            };
+            let dict = match &resolved {
+                Object::Dictionary(d) => d,
+                _ => { kept.push(entry.clone()); continue; }
+            };
+            let subtype = match dict.get(b"Subtype") {
+                Ok(Object::Name(n)) => n.clone(),
+                _ => { kept.push(entry.clone()); continue; }
+            };
+            if subtype == b"Redact" {
+                if let Ok(rect_obj) = dict.get(b"Rect") {
+                    if let Ok(Object::Array(arr)) = resolve_object(&doc, rect_obj) {
+                        if let Ok(r) = crate::pdf_utils::parse_rect(&arr) {
+                            redact_rects.push(r);
+                            redaction_count += 1;
+                        }
+                    }
+                }
+            } else {
+                kept.push(entry.clone());
+            }
+        }
+
+        if !redact_rects.is_empty() {
+            // Build content stream that draws black filled rectangles
+            let mut content_ops = String::new();
+            for (rx0, ry0, rx1, ry1) in &redact_rects {
+                content_ops.push_str(&format!(
+                    "q 0 0 0 rg {} {} {} {} re f Q\n",
+                    rx0, ry0, rx1 - rx0, ry1 - ry0
+                ));
+            }
+
+            let stream_dict = Dictionary::new();
+            let stream = Stream::new(stream_dict, content_ops.into_bytes());
+            let stream_id = doc.add_object(Object::Stream(stream));
+
+            // Get existing Contents and append our stream
+            if let Ok(page_obj) = doc.get_object(*page_id) {
+                let page_dict = page_obj.as_dict().map_err(|e| format!("Page not dict: {}", e))?.clone();
+                let mut contents_arr: Vec<Object> = Vec::new();
+                if let Ok(contents) = page_dict.get(b"Contents") {
+                    match contents {
+                        Object::Reference(id) => contents_arr.push(Object::Reference(*id)),
+                        Object::Array(arr) => contents_arr = arr.clone(),
+                        _ => {}
+                    }
+                }
+                contents_arr.push(Object::Reference(stream_id));
+
+                if let Ok(page_obj_mut) = doc.get_object_mut(*page_id) {
+                    if let Ok(dict) = page_obj_mut.as_dict_mut() {
+                        dict.set("Contents", Object::Array(contents_arr));
+                        if kept.is_empty() {
+                            dict.remove(b"Annots");
+                        } else {
+                            dict.set("Annots", Object::Array(kept));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    doc.save(&path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(redaction_count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::RedactionAnnotationData;
+    use base64::Engine;
+    use lopdf::{Document, Object, Dictionary};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn build_temp_pdf(n: usize) -> String {
+        let mut doc = Document::new();
+        let pages_id = doc.new_object_id();
+
+        let mut kids: Vec<Object> = Vec::new();
+        for _ in 0..n {
+            let mut page_dict = Dictionary::new();
+            page_dict.set("Type", Object::Name(b"Page".to_vec()));
+            page_dict.set("Parent", Object::Reference(pages_id));
+            page_dict.set("MediaBox", Object::Array(vec![
+                Object::Integer(0), Object::Integer(0),
+                Object::Integer(612), Object::Integer(792),
+            ]));
+            let page_id = doc.add_object(Object::Dictionary(page_dict));
+            kids.push(Object::Reference(page_id));
+        }
+
+        let mut pages_dict = Dictionary::new();
+        pages_dict.set("Type", Object::Name(b"Pages".to_vec()));
+        pages_dict.set("Count", Object::Integer(n as i64));
+        pages_dict.set("Kids", Object::Array(kids));
+        doc.objects.insert(pages_id, Object::Dictionary(pages_dict));
+
+        let mut catalog = Dictionary::new();
+        catalog.set("Type", Object::Name(b"Catalog".to_vec()));
+        catalog.set("Pages", Object::Reference(pages_id));
+        let catalog_id = doc.add_object(Object::Dictionary(catalog));
+        doc.trailer.set("Root", Object::Reference(catalog_id));
+
+        let count = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let path = std::env::temp_dir().join(format!(
+            "palimpsest_save_test_{}_{}.pdf", std::process::id(), count
+        ));
+        doc.save(&path).unwrap();
+        path.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn save_and_read_redaction() {
+        let path = build_temp_pdf(1);
+
+        let annotations = vec![RedactionAnnotationData {
+            page_number: 1,
+            x: 0.1,
+            y: 0.2,
+            width: 0.3,
+            height: 0.1,
+        }];
+
+        save_redaction_annotations(path.clone(), annotations).unwrap();
+
+        // Read back annotations
+        let result = super::super::read_annotations(path.clone()).unwrap();
+        let redactions: Vec<_> = result.iter().filter(|a| a.annotation_type == "redaction").collect();
+        assert_eq!(redactions.len(), 1);
+        let r = &redactions[0];
+        assert!((r.x - 0.1).abs() < 0.01);
+        assert!((r.y - 0.2).abs() < 0.01);
+        assert!((r.width - 0.3).abs() < 0.01);
+        assert!((r.height - 0.1).abs() < 0.01);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn apply_redactions_flattens() {
+        let path = build_temp_pdf(1);
+
+        let annotations = vec![RedactionAnnotationData {
+            page_number: 1,
+            x: 0.1,
+            y: 0.2,
+            width: 0.3,
+            height: 0.1,
+        }];
+
+        save_redaction_annotations(path.clone(), annotations).unwrap();
+
+        // Verify annotation exists
+        let before = super::super::read_annotations(path.clone()).unwrap();
+        assert!(before.iter().any(|a| a.annotation_type == "redaction"));
+
+        // Apply redactions
+        let count = apply_redactions(path.clone()).unwrap();
+        assert_eq!(count, 1);
+
+        // Verify annotation is removed
+        let after = super::super::read_annotations(path.clone()).unwrap();
+        assert!(!after.iter().any(|a| a.annotation_type == "redaction"));
+
+        let _ = std::fs::remove_file(&path);
+    }
 }
