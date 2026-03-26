@@ -40,11 +40,11 @@ A free, open-source PDF viewer and editor. View, annotate, organize pages, and m
 - **Merge PDFs** — combine multiple documents into one
 
 ### Security
-- **Password protection** — open encrypted PDFs, set or remove passwords (AES-256)
 - **Redaction** — drag to mark areas, then apply to permanently cover content with black
 
 ### Saving & Export
 - **Save**, **Save As**, and **Save As Locked** (flattens annotations into non-editable page content)
+- **Export as images** — PNG or JPEG with quality/scale options, single page or batch
 - **Print** via native OS dialog
 - Smart save prompt for documents with signatures
 
