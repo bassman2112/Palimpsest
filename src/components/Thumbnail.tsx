@@ -20,9 +20,11 @@ interface ThumbnailProps {
   onDeleteMergePage?: () => void;
   onContextMenu?: (pageNumber: number, x: number, y: number) => void;
   onPointerDown?: (pageNumber: number, e: React.PointerEvent) => void;
+  isBookmarked?: boolean;
+  onToggleBookmark?: (pageNumber: number) => void;
 }
 
-export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected, size, label, annotations, onClick, onDoubleClick, onDeletePage, onDeleteMergePage, onContextMenu, onPointerDown }: ThumbnailProps) {
+export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected, size, label, annotations, onClick, onDoubleClick, onDeletePage, onDeleteMergePage, onContextMenu, onPointerDown, isBookmarked, onToggleBookmark }: ThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<PdfRenderTask | null>(null);
@@ -266,6 +268,20 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected,
               return null;
             })}
           </div>
+        )}
+        {onToggleBookmark && (
+          <button
+            className={`thumbnail-bookmark-btn${isBookmarked ? " thumbnail-bookmark-active" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleBookmark(dimension.pageNumber);
+            }}
+            title={isBookmarked ? "Remove bookmark" : "Add bookmark"}
+          >
+            <svg width="12" height="14" viewBox="0 0 12 14" fill={isBookmarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 1.5A.5.5 0 0 1 1.5 1h9a.5.5 0 0 1 .5.5V13l-5-3-5 3V1.5Z" />
+            </svg>
+          </button>
         )}
         {isSelected && <div className="thumbnail-select-check">&#10003;</div>}
         {onDeleteMergePage && (

@@ -1,6 +1,13 @@
+export interface OutlineItem {
+  title: string;
+  pageNumber: number | null;
+  children: OutlineItem[];
+}
+
 export interface PdfDocument {
   readonly numPages: number;
   getPage(pageNumber: number): Promise<PdfPage>;
+  getOutline(): Promise<OutlineItem[] | null>;
   getFormData(): Record<string, { value: string; type?: string }> | null;
   onFormModified(callback: () => void): () => void;
   readonly annotationStorage: unknown;

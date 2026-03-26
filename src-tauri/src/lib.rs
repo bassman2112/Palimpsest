@@ -63,7 +63,8 @@ pub fn run() {
             commands::insert_image_page,
             commands::save_redaction_annotations,
             commands::apply_single_redaction,
-            commands::apply_redactions
+            commands::apply_redactions,
+            commands::export_page_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

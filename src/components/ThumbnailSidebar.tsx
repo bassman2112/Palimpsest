@@ -17,6 +17,8 @@ interface ThumbnailSidebarProps {
   onSplitPdf?: (afterPage: number) => void;
   onInsertBlankPage?: (afterPage: number) => void;
   onInsertImagePage?: (afterPage: number) => void;
+  isBookmarked?: (pageNumber: number) => boolean;
+  onToggleBookmark?: (pageNumber: number) => void;
 }
 
 interface DragState {
@@ -38,6 +40,8 @@ export function ThumbnailSidebar({
   onSplitPdf,
   onInsertBlankPage,
   onInsertImagePage,
+  isBookmarked,
+  onToggleBookmark,
 }: ThumbnailSidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ pageNumber: number; x: number; y: number } | null>(null);
@@ -304,6 +308,8 @@ export function ThumbnailSidebar({
           onDeletePage={onDeletePage}
           onContextMenu={handleContextMenu}
           onPointerDown={handlePointerDown}
+          isBookmarked={isBookmarked?.(dim.pageNumber)}
+          onToggleBookmark={onToggleBookmark}
         />
       ))}
 

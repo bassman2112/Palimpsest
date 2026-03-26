@@ -30,6 +30,7 @@ import type {
   PdfLayerHandle,
   PdfTextItem,
   PdfEngine,
+  OutlineItem,
 } from "./types";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -48,6 +49,44 @@ class PdfJsDocument implements PdfDocument {
   async getPage(pageNumber: number): Promise<PdfPage> {
     const page = await this._doc.getPage(pageNumber);
     return new PdfJsPage(page, pageNumber, this._doc.annotationStorage);
+  }
+
+  async getOutline(): Promise<OutlineItem[] | null> {
+    try {
+      const outline = await this._doc.getOutline();
+      if (!outline || outline.length === 0) return null;
+
+      const doc = this._doc;
+      const convert = async (items: any[]): Promise<OutlineItem[]> => {
+        const result: OutlineItem[] = [];
+        for (const item of items) {
+          let pageNumber: number | null = null;
+          if (item.dest) {
+            try {
+              const dest = typeof item.dest === "string"
+                ? await doc.getDestination(item.dest)
+                : item.dest;
+              if (dest && Array.isArray(dest) && dest[0]) {
+                const pageIndex = await doc.getPageIndex(dest[0]);
+                pageNumber = pageIndex + 1;
+              }
+            } catch {
+              // dest resolution failed
+            }
+          }
+          result.push({
+            title: item.title ?? "",
+            pageNumber,
+            children: item.items ? await convert(item.items) : [],
+          });
+        }
+        return result;
+      };
+
+      return await convert(outline);
+    } catch {
+      return null;
+    }
   }
 
   getFormData(): Record<string, { value: string; type?: string }> | null {

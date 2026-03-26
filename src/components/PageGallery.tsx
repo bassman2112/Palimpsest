@@ -27,6 +27,8 @@ interface PageGalleryProps {
   onMergeReorderPage?: (fromIndex: number, toIndex: number) => void;
   onMergeReorderPages?: (pageIds: string[], insertBefore: number) => void;
   onAddDocument?: () => void;
+  isBookmarked?: (pageNumber: number) => boolean;
+  onToggleBookmark?: (pageNumber: number) => void;
 }
 
 interface DragState {
@@ -67,6 +69,8 @@ export function PageGallery({
   onMergeReorderPage,
   onMergeReorderPages,
   onAddDocument,
+  isBookmarked,
+  onToggleBookmark,
 }: PageGalleryProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ pageNumber: number; x: number; y: number } | null>(null);
@@ -562,6 +566,8 @@ export function PageGallery({
                   onDeletePage={onDeletePage}
                   onContextMenu={handleContextMenu}
                   onPointerDown={handlePointerDown}
+                  isBookmarked={isBookmarked?.(dim.pageNumber)}
+                  onToggleBookmark={onToggleBookmark}
                 />
               </div>
             ))}

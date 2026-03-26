@@ -18,6 +18,7 @@ function mockDoc(pages: { text: string }[]): PdfDocument {
   return {
     numPages: pages.length,
     getPage: async (n: number) => mockPage(n, pages[n - 1].text),
+    getOutline: async () => null,
     getFormData: () => null,
     onFormModified: () => () => {},
     annotationStorage: null,

@@ -716,6 +716,145 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+/* Outline / Bookmarks Sidebar */
+.outline-sidebar {
+  width: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid #ddd;
+  background: #fafafa;
+  flex-shrink: 0;
+  font-size: 13px;
+  user-select: none;
+}
+
+.outline-list,
+.outline-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outline-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 1px 4px;
+  min-height: 28px;
+}
+
+.outline-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.outline-item-active {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+.outline-chevron {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+  cursor: pointer;
+  color: #888;
+}
+
+.outline-chevron-placeholder {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.outline-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline-page-num {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #999;
+  margin-left: 4px;
+}
+
+.outline-section-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  padding: 10px 12px 4px;
+}
+
+.outline-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: #999;
+  font-size: 13px;
+}
+
+.bookmark-list {
+  padding: 0;
+  margin: 0;
+}
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 5px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 1px 4px;
+  min-height: 28px;
+  position: relative;
+}
+
+.bookmark-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.bookmark-item-icon {
+  flex-shrink: 0;
+  color: #2563eb;
+}
+
+.bookmark-delete-btn {
+  display: none;
+  border: none;
+  background: none;
+  color: #999;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.bookmark-item:hover .bookmark-delete-btn {
+  display: block;
+}
+
+.bookmark-delete-btn:hover {
+  color: #dc2626;
+}
+
+.bookmark-label-input {
+  flex: 1;
+  font-size: 13px;
+  padding: 1px 4px;
+  border: 1px solid #2563eb;
+  border-radius: 3px;
+  outline: none;
+  min-width: 0;
+}
+
 .thumbnail {
   cursor: pointer;
   border: 2px solid transparent;
@@ -766,6 +905,39 @@ html, body, #root {
 
 .thumbnail-delete-btn:hover {
   background: #dc2626;
+}
+
+.thumbnail-bookmark-btn {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.thumbnail:hover .thumbnail-bookmark-btn {
+  display: flex;
+}
+
+.thumbnail-bookmark-active {
+  display: flex;
+  background: rgba(37, 99, 235, 0.85);
+  color: #fff;
+}
+
+.thumbnail-bookmark-btn:hover {
+  background: #2563eb;
 }
 
 .thumbnail-dragging {
@@ -1616,6 +1788,71 @@ html, body, #root {
     border-right-color: #444;
   }
 
+  .outline-sidebar {
+    background: #222;
+    border-right-color: #444;
+    color: #ddd;
+  }
+
+  .outline-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .outline-item-active {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+  }
+
+  .outline-chevron {
+    color: #888;
+  }
+
+  .outline-page-num {
+    color: #666;
+  }
+
+  .outline-section-header {
+    color: #777;
+  }
+
+  .outline-empty {
+    color: #666;
+  }
+
+  .bookmark-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .bookmark-item-icon {
+    color: #60a5fa;
+  }
+
+  .bookmark-delete-btn {
+    color: #666;
+  }
+
+  .bookmark-delete-btn:hover {
+    color: #f87171;
+  }
+
+  .bookmark-label-input {
+    background: #333;
+    color: #ddd;
+    border-color: #60a5fa;
+  }
+
+  .thumbnail-bookmark-btn {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .thumbnail-bookmark-active {
+    background: rgba(59, 130, 246, 0.85);
+  }
+
+  .thumbnail-bookmark-btn:hover {
+    background: #2563eb;
+  }
+
   .thumbnail-label {
     color: #aaa;
   }
@@ -2036,6 +2273,82 @@ html, body, #root {
 
 .save-dialog-save:hover {
   background: #1d4ed8;
+}
+
+/* ── Export dialog ──────────────────────────────────────────────── */
+.export-dialog {
+  width: 420px;
+  padding: 20px 24px;
+}
+
+.export-field {
+  margin-bottom: 14px;
+}
+
+.export-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.export-options-row {
+  display: flex;
+  gap: 14px;
+}
+
+.export-radio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.export-range-input {
+  margin-top: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.export-select {
+  padding: 5px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.export-progress {
+  position: relative;
+  height: 20px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.export-progress-bar {
+  height: 100%;
+  background: #2563eb;
+  transition: width 0.2s;
+}
+
+.export-progress-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 20px;
+  color: #333;
 }
 
 /* ── Signature modal ────────────────────────────────────────────── */
@@ -2493,5 +2806,24 @@ html, body, #root {
 
   .save-dialog-save:hover {
     background: #1d4ed8;
+  }
+
+  .export-label {
+    color: #aaa;
+  }
+
+  .export-range-input,
+  .export-select {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .export-progress {
+    background: #444;
+  }
+
+  .export-progress-text {
+    color: #ddd;
   }
 }

@@ -14,6 +14,7 @@ A free, open-source PDF viewer and editor. View, annotate, organize pages, and m
 - **Fit Width / Fit Page** zoom presets, plus manual zoom input (10%–10,000%)
 - **Drag & drop** — open files by dragging them onto the window
 - **Text selection** with copy support
+- **Bookmarks** — bookmark any page, rename labels, unified sidebar with built-in document outline
 
 ### Annotations
 - **Highlights** — drag to create, 7-color palette, resize handles, recolor via right-click

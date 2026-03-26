@@ -8,6 +8,7 @@ import type {
   PdfLayerHandle,
   PdfTextItem,
   PdfEngine,
+  OutlineItem,
 } from "./types";
 
 interface MupdfViewportData {
@@ -36,6 +37,24 @@ class MupdfDocument implements PdfDocument {
       this._pageCache.set(pageNumber, page);
     }
     return new MupdfPage(page, pageNumber);
+  }
+
+  async getOutline(): Promise<OutlineItem[] | null> {
+    try {
+      const outline = this._doc.loadOutline();
+      if (!outline || outline.length === 0) return null;
+
+      const convert = (items: any[]): OutlineItem[] =>
+        items.map((item) => ({
+          title: item.title ?? "",
+          pageNumber: typeof item.page === "number" ? item.page + 1 : null,
+          children: item.down ? convert(item.down) : [],
+        }));
+
+      return convert(outline);
+    } catch {
+      return null;
+    }
   }
 
   getFormData(): Record<string, { value: string; type?: string }> | null {

@@ -21,11 +21,15 @@ import { ThumbnailSidebar } from "./ThumbnailSidebar";
 import { PageGallery } from "./PageGallery";
 import { SearchBar } from "./SearchBar";
 import { SignatureModal } from "./SignatureModal";
+import { OutlineSidebar } from "./OutlineSidebar";
+import { ExportDialog } from "./ExportDialog";
 import type { SignatureKind } from "./SignatureModal";
 import type { SearchBarHandle } from "./SearchBar";
 import type { AnnotationTool, Annotation } from "../types";
+import type { OutlineItem } from "../lib/pdf/types";
 import type { RecentFile } from "../hooks/useRecentFiles";
 import { useSavedSignatures } from "../hooks/useSavedSignatures";
+import { useCustomBookmarks } from "../hooks/useCustomBookmarks";
 import { FIT_ZOOM_PADDING } from "../constants";
 import {
   toSaveData,
@@ -112,6 +116,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
     } = useMergeDocuments();
 
     const { signatures: savedSignatures, addSignature: saveSig, removeSignature: deleteSavedSig } = useSavedSignatures();
+    const { bookmarks: customBookmarks, isBookmarked, toggleBookmark, updateLabel: updateBookmarkLabel, removeBookmark } = useCustomBookmarks(metadata?.path ?? null);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [zoom, setZoom] = useState(1);
@@ -127,6 +132,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
     const [hasFormChanges, setHasFormChanges] = useState(false);
     const [signatureSavePrompt, setSignatureSavePrompt] = useState(false);
     const [redactionSavePrompt, setRedactionSavePrompt] = useState(false);
+    const [bookmarksOpen, setBookmarksOpen] = useState(false);
+    const [outline, setOutline] = useState<OutlineItem[] | null>(null);
+    const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
     const scrollToPageRef = useRef<((page: number) => void) | null>(null);
     const viewerContainerRef = useRef<HTMLDivElement | null>(null);
@@ -231,6 +239,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
 
     const handleToggleGallery = useCallback(() => {
       setViewMode((m) => (m === "scroll" ? "gallery" : "scroll"));
+    }, []);
+
+    const handleToggleBookmarks = useCallback(() => {
+      setBookmarksOpen((b) => !b);
     }, []);
 
     const handleGalleryPageClick = useCallback(
@@ -731,6 +743,15 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       setHasFormChanges(false);
     }, [metadata?.path]);
 
+    // Load outline when PDF document changes
+    useEffect(() => {
+      if (!pdfDoc) {
+        setOutline(null);
+        return;
+      }
+      pdfDoc.getOutline().then((o) => setOutline(o));
+    }, [pdfDoc]);
+
     // Signature modal handlers
     const handleSignatureClick = useCallback(() => {
       if (pendingSignature) {
@@ -910,6 +931,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           onGoToPage={handleGoToPage}
           onApplyRedactions={handleApplyRedactions}
           hasRedactions={annotations.some((a) => a.type === "redaction")}
+          onToggleBookmarks={handleToggleBookmarks}
+          bookmarksOpen={bookmarksOpen}
+          onExportPages={() => setExportDialogOpen(true)}
         />
 
         <div className="content">
@@ -952,10 +976,21 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                   onMergeReorderPage={isMerging ? mergeReorderPage : undefined}
                   onMergeReorderPages={isMerging ? mergeReorderPages : undefined}
                   onAddDocument={isMerging ? mergeAddDocument : handleAddDocument}
+                  isBookmarked={isMerging ? undefined : isBookmarked}
+                  onToggleBookmark={isMerging ? undefined : toggleBookmark}
                 />
               ) : (
                 <>
-                  {sidebarOpen && (
+                  {bookmarksOpen ? (
+                    <OutlineSidebar
+                      outline={outline ?? []}
+                      currentPage={currentPage}
+                      onPageClick={handleThumbnailClick}
+                      customBookmarks={customBookmarks}
+                      onRemoveBookmark={removeBookmark}
+                      onUpdateBookmarkLabel={updateBookmarkLabel}
+                    />
+                  ) : sidebarOpen ? (
                     <ThumbnailSidebar
                       pdfDoc={pdfDoc}
                       pageDimensions={pageDimensions}
@@ -969,8 +1004,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                       onSplitPdf={handleSplitPdf}
                       onInsertBlankPage={handleInsertBlankPage}
                       onInsertImagePage={handleInsertImagePage}
+                      isBookmarked={isBookmarked}
+                      onToggleBookmark={toggleBookmark}
                     />
-                  )}
+                  ) : null}
                   <PdfViewer
                     pdfDoc={pdfDoc}
                     pageDimensions={pageDimensions}
@@ -1122,6 +1159,15 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           onClose={handleSignatureModalClose}
           onChangeKind={setSignatureKind}
         />
+
+        {exportDialogOpen && pdfDoc && (
+          <ExportDialog
+            pdfDoc={pdfDoc}
+            totalPages={totalPages}
+            currentPage={currentPage}
+            onClose={() => setExportDialogOpen(false)}
+          />
+        )}
       </div>
     );
   }

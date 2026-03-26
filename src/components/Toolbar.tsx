@@ -36,6 +36,9 @@ interface ToolbarProps {
   onGoToPage?: (page: number) => void;
   onApplyRedactions?: () => void;
   hasRedactions?: boolean;
+  onToggleBookmarks?: () => void;
+  bookmarksOpen?: boolean;
+  onExportPages?: () => void;
 }
 
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5];
@@ -73,6 +76,9 @@ export function Toolbar({
   onGoToPage,
   onApplyRedactions,
   hasRedactions,
+  onToggleBookmarks,
+  bookmarksOpen,
+  onExportPages,
 }: ToolbarProps) {
   const [zoomInput, setZoomInput] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState<string | null>(null);
@@ -152,6 +158,16 @@ export function Toolbar({
             data-tooltip="Thumbnails"
           >
             ☰
+          </button>
+          <button
+            onClick={onToggleBookmarks}
+            className={bookmarksOpen && viewMode === "scroll" ? "tool-active" : ""}
+            disabled={viewMode === "gallery" || !!isMerging}
+            data-tooltip="Bookmarks"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 2h8a1 1 0 0 1 1 1v11l-5-3-5 3V3a1 1 0 0 1 1-1Z" />
+            </svg>
           </button>
           <button
             onClick={onToggleGallery}
@@ -461,6 +477,17 @@ export function Toolbar({
                         }}
                       >
                         Save As Locked…
+                      </button>
+                    )}
+                    {onExportPages && (
+                      <button
+                        className="save-dropdown-option"
+                        onClick={() => {
+                          setSaveMenuOpen(false);
+                          onExportPages();
+                        }}
+                      >
+                        Export as Images…
                       </button>
                     )}
                     {onApplyRedactions && hasRedactions && (

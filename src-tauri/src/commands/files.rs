@@ -1,3 +1,4 @@
+use base64::Engine;
 use tauri::menu::{MenuItem, MenuItemKind};
 use tauri::Manager;
 
@@ -66,6 +67,16 @@ pub fn print_pdf(app: tauri::AppHandle, path: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to open PDF: {}", e))?;
     }
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn export_page_image(path: String, image_data: String) -> Result<(), String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&image_data)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+    std::fs::write(&path, &bytes)
+        .map_err(|e| format!("Failed to write image: {}", e))?;
     Ok(())
 }
 
