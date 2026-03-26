@@ -227,15 +227,16 @@ html, body, #root {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 6px 10px;
   background: #fff;
   border-bottom: 1px solid #ddd;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .toolbar button {
-  padding: 6px 12px;
+  padding: 5px 10px;
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
@@ -246,6 +247,7 @@ html, body, #root {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .toolbar button:hover:not(:disabled) {
@@ -481,6 +483,28 @@ html, body, #root {
   transition-delay: 500ms;
 }
 
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 10px;
+  border-right: 1px solid #ddd;
+}
+
+
+.toolbar-group:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbar-group:last-child {
+  border-right: none;
+  padding-right: 0;
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
 .toolbar-divider {
   width: 1px;
   height: 24px;
@@ -490,7 +514,8 @@ html, body, #root {
 
 .file-name {
   font-weight: 500;
-  max-width: 300px;
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1551,6 +1576,41 @@ html, body, #root {
   background: #e8e8e8;
 }
 
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: 100%;
+  color: #666;
+  font-size: 16px;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #ddd;
+  border-top-color: #666;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px 64px;
+  border: 2px dashed #ccc;
+  border-radius: 12px;
+  background: #f8f8f8;
+}
+
 /* Recent files */
 .recent-files {
   margin-top: 8px;
@@ -1696,6 +1756,10 @@ html, body, #root {
     background: #2563eb;
     color: #fff;
     border-color: #1d4ed8;
+  }
+
+  .toolbar-group {
+    border-right-color: #555;
   }
 
   .toolbar-divider {
@@ -2085,6 +2149,20 @@ html, body, #root {
 
   .highlight-color-swatch {
     border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .loading-state {
+    color: #999;
+  }
+
+  .spinner {
+    border-color: #444;
+    border-top-color: #999;
+  }
+
+  .drop-zone {
+    border-color: #555;
+    background: #252525;
   }
 
   .empty-state button {
@@ -2647,6 +2725,90 @@ html, body, #root {
   background: #e8e8e8;
 }
 
+/* ── Keyboard Shortcuts modal ──────────────────────────────────── */
+.shortcuts-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 440px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.shortcuts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.shortcuts-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.shortcuts-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #666;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shortcuts-close:hover {
+  background: #e8e8e8;
+  color: #333;
+}
+
+.shortcuts-body {
+  padding: 12px 20px 20px;
+  overflow-y: auto;
+}
+
+.shortcuts-section {
+  margin-bottom: 16px;
+}
+
+.shortcuts-section:last-child {
+  margin-bottom: 0;
+}
+
+.shortcuts-section h3 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+  margin: 0 0 6px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.shortcut-row kbd {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: #555;
+}
+
 /* ── Dark mode: AnnotationLayer + Signature ──────────────────── */
 @media (prefers-color-scheme: dark) {
   /* AnnotationLayer form fields */
@@ -2825,5 +2987,34 @@ html, body, #root {
 
   .export-progress-text {
     color: #ddd;
+  }
+
+  /* Keyboard Shortcuts modal */
+  .shortcuts-modal {
+    background: #2a2a2a;
+    color: #e8e8e8;
+  }
+
+  .shortcuts-header {
+    border-bottom-color: #444;
+  }
+
+  .shortcuts-close {
+    color: #888;
+  }
+
+  .shortcuts-close:hover {
+    background: #444;
+    color: #e8e8e8;
+  }
+
+  .shortcuts-section h3 {
+    color: #777;
+  }
+
+  .shortcut-row kbd {
+    background: #333;
+    border-color: #555;
+    color: #ccc;
   }
 }

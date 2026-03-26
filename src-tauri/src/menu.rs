@@ -1,4 +1,4 @@
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
 
 use crate::types::RecentPaths;
@@ -10,7 +10,13 @@ pub(crate) fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Err
         "Palimpsest",
         true,
         &[
-            &PredefinedMenuItem::about(app, None, None)?,
+            &PredefinedMenuItem::about(app, None, Some(AboutMetadata {
+                name: Some("Palimpsest".into()),
+                version: app.config().version.clone(),
+                copyright: Some("© 2026 Alex Gelinas".into()),
+                license: Some("AGPL-3.0-only".into()),
+                ..Default::default()
+            }))?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, None)?,
             &PredefinedMenuItem::hide_others(app, None)?,
@@ -32,7 +38,7 @@ pub(crate) fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Err
     let open_item = MenuItem::with_id(app, "open", "Open...", true, Some("CmdOrCtrl+O"))?;
     let save_item = MenuItem::with_id(app, "save", "Save", true, Some("CmdOrCtrl+S"))?;
     let save_as_item = MenuItem::with_id(app, "save_as", "Save As...", true, Some("CmdOrCtrl+Shift+S"))?;
-    let save_locked_item = MenuItem::with_id(app, "save_locked", "Save As Locked...", true, None::<&str>)?;
+    let save_locked_item = MenuItem::with_id(app, "save_locked", "Save Flattened...", true, None::<&str>)?;
     let merge_item = MenuItem::with_id(app, "merge", "Merge PDFs...", true, None::<&str>)?;
     let print_item = MenuItem::with_id(app, "print", "Print...", true, Some("CmdOrCtrl+P"))?;
     let new_tab_item = MenuItem::with_id(app, "new_tab", "New Tab", true, Some("CmdOrCtrl+T"))?;
@@ -78,7 +84,17 @@ pub(crate) fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Err
         &[&sidebar_item, &gallery_item, &sep_v1, &zoom_in_item, &zoom_out_item, &zoom_reset_item, &fit_width_item, &fit_page_item, &sep_v2, &find_item],
     )?;
 
-    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu])?;
+    // -- Help menu --
+    let check_updates_item = MenuItem::with_id(app, "check_updates", "Check for Updates...", true, None::<&str>)?;
+    let sep_h1 = PredefinedMenuItem::separator(app)?;
+    let report_bug_item = MenuItem::with_id(app, "report_bug", "Report a Bug...", true, None::<&str>)?;
+    let keyboard_shortcuts_item = MenuItem::with_id(app, "keyboard_shortcuts", "Keyboard Shortcuts", true, Some("CmdOrCtrl+/"))?;
+    let help_menu = Submenu::with_id_and_items(
+        app, "help", "Help", true,
+        &[&check_updates_item, &sep_h1, &report_bug_item, &keyboard_shortcuts_item],
+    )?;
+
+    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu, &help_menu])?;
     app.set_menu(menu)?;
 
     app.on_menu_event(|app, event| {
@@ -131,6 +147,15 @@ pub(crate) fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Err
             }
             "find" => {
                 let _ = app.emit("menu-find", ());
+            }
+            "check_updates" => {
+                let _ = app.emit("menu-check-updates", ());
+            }
+            "report_bug" => {
+                let _ = app.emit("menu-report-bug", ());
+            }
+            "keyboard_shortcuts" => {
+                let _ = app.emit("menu-keyboard-shortcuts", ());
             }
             other if other.starts_with("recent_") => {
                 if let Ok(idx) = other.strip_prefix("recent_").unwrap_or("").parse::<usize>() {

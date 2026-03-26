@@ -26,7 +26,8 @@ endif
 	@echo "Releasing v$(VERSION)..."
 	sed -i '' 's/"version": ".*"/"version": "$(VERSION)"/' package.json
 	sed -i '' 's/^version = ".*"/version = "$(VERSION)"/' src-tauri/Cargo.toml
-	git add package.json src-tauri/Cargo.toml
+	sed -i '' 's/"version": ".*"/"version": "$(VERSION)"/' src-tauri/tauri.conf.json
+	git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
 	git commit -m "release: v$(VERSION)"
 	git tag "v$(VERSION)"
 	git push origin main --tags

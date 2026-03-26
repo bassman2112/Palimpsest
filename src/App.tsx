@@ -10,6 +10,7 @@ import { DocumentView } from "./components/DocumentView";
 import type { DocumentViewHandle } from "./components/DocumentView";
 import { SaveDialog } from "./components/SaveDialog";
 import type { SaveDialogResult } from "./components/SaveDialog";
+import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./App.css";
 
@@ -35,6 +36,7 @@ function App() {
   const { recentFiles, addRecent } = useRecentFiles();
   const tabRefs = useRef<Map<string, DocumentViewHandle>>(new Map());
   const [closePrompt, setClosePrompt] = useState<{ id: string; title: string } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   useEffect(() => {
     applyTheme(themeMode);
@@ -48,6 +50,17 @@ function App() {
       return "auto";
     });
   }, []);
+
+  // Dynamic window title (affects Dock tooltip, Mission Control, Alt-Tab)
+  useEffect(() => {
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    let title = "Palimpsest";
+    if (activeTab && activeTab.title !== "New Tab") {
+      const prefix = activeTab.hasChanges ? "● " : "";
+      title = `${prefix}${activeTab.title} — Palimpsest`;
+    }
+    getCurrentWindow().setTitle(title).catch(() => {});
+  }, [tabs, activeTabId]);
 
   // Keep refs in sync so event listeners never see stale values
   const activeTabIdRef = useRef(activeTabId);
@@ -186,6 +199,50 @@ function App() {
     const unlistenFind = listen<void>("menu-find", () => {
       tabRefs.current.get(activeTabIdRef.current)?.find();
     });
+    const unlistenCheckUpdates = listen<void>("menu-check-updates", async () => {
+      try {
+        const result = await invoke<{ up_to_date: boolean; current_version: string; latest_version: string; release_url: string }>("check_for_updates");
+        if (result.up_to_date) {
+          const { message } = await import("@tauri-apps/plugin-dialog");
+          await message(`You're on the latest version (v${result.current_version}).`, { title: "No Updates Available", kind: "info" });
+        } else {
+          const { ask } = await import("@tauri-apps/plugin-dialog");
+          const download = await ask(`A new version is available: v${result.latest_version} (you have v${result.current_version}).`, { title: "Update Available", kind: "info", okLabel: "Download", cancelLabel: "Later" });
+          if (download) {
+            const { openUrl } = await import("@tauri-apps/plugin-opener");
+            await openUrl(result.release_url);
+          }
+        }
+      } catch (e) {
+        const { message } = await import("@tauri-apps/plugin-dialog");
+        await message(`Could not check for updates: ${e}`, { title: "Update Check Failed", kind: "error" });
+      }
+    });
+    const unlistenReportBug = listen<void>("menu-report-bug", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl("https://github.com/bassman2112/palimpsest/issues");
+    });
+    const unlistenKeyboardShortcuts = listen<void>("menu-keyboard-shortcuts", () => {
+      setShowShortcuts(true);
+    });
+    const unlistenOpenFilePath = listen<string>("open-file-path", (event) => {
+      const currentTabs = tabsRef.current;
+      const activeId = activeTabIdRef.current;
+      const activeTab = currentTabs.find((t) => t.id === activeId);
+      if (activeTab && activeTab.title === "New Tab") {
+        // Open in current empty tab
+        tabRefs.current.get(activeId)?.openPath(event.payload);
+      } else {
+        // Create a new tab and open there
+        const tab = createTab();
+        setTabs((prev) => [...prev, tab]);
+        setActiveTabId(tab.id);
+        // Defer openPath so the DocumentView mounts and registers its ref
+        requestAnimationFrame(() => {
+          tabRefs.current.get(tab.id)?.openPath(event.payload);
+        });
+      }
+    });
     return () => {
       unlistenOpen.then((f) => f());
       unlistenRecent.then((f) => f());
@@ -204,6 +261,10 @@ function App() {
       unlistenFitWidth.then((f) => f());
       unlistenFitPage.then((f) => f());
       unlistenFind.then((f) => f());
+      unlistenCheckUpdates.then((f) => f());
+      unlistenReportBug.then((f) => f());
+      unlistenKeyboardShortcuts.then((f) => f());
+      unlistenOpenFilePath.then((f) => f());
     };
   }, [handleCloseTab, handleNewTab]);
 
@@ -254,6 +315,9 @@ function App() {
           title={closePrompt.title}
           onResult={handleClosePromptResult}
         />
+      )}
+      {showShortcuts && (
+        <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />
       )}
     </div>
   );

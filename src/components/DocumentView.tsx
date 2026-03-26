@@ -952,7 +952,12 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
             />
           )}
 
-          {pdfDoc && pageDimensions.length > 0 ? (
+          {loading && !pdfDoc ? (
+            <div className="loading-state">
+              <div className="spinner" />
+              Opening…
+            </div>
+          ) : pdfDoc && pageDimensions.length > 0 ? (
             <div className="content-body">
               {viewMode === "gallery" || isMerging ? (
                 <PageGallery
@@ -1034,8 +1039,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
             </div>
           ) : (
             <div className="empty-state">
-              <p>Open a PDF to get started</p>
-              <button onClick={handleOpen}>Open PDF</button>
+              <div className="drop-zone">
+                <p>Open or drop a PDF to get started</p>
+                <button onClick={handleOpen}>Open PDF</button>
+              </div>
 
               {recentFiles.length > 0 && (
                 <div className="recent-files">
@@ -1098,7 +1105,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                   }}
                   autoFocus
                 >
-                  Save As Locked…
+                  Save Flattened…
                 </button>
               </div>
             </div>

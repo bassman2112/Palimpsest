@@ -142,51 +142,53 @@ export function Toolbar({
 
   return (
     <div className="toolbar">
-      <button onClick={onOpen} disabled={loading}>
-        {loading ? "Opening…" : "Open PDF"}
-      </button>
-
-      {fileName && <span className="file-name">{fileName}</span>}
+      <div className="toolbar-group">
+        <button onClick={onOpen} disabled={loading}>
+          {loading ? "Opening…" : "Open PDF"}
+        </button>
+        {fileName && <span className="file-name">{fileName}</span>}
+      </div>
 
       {totalPages > 0 && (
         <>
-          <div className="toolbar-divider" />
-          <button
-            onClick={onToggleSidebar}
-            className={sidebarOpen && viewMode === "scroll" ? "tool-active" : ""}
-            disabled={viewMode === "gallery" || !!isMerging}
-            data-tooltip="Thumbnails"
-          >
-            ☰
-          </button>
-          <button
-            onClick={onToggleBookmarks}
-            className={bookmarksOpen && viewMode === "scroll" ? "tool-active" : ""}
-            disabled={viewMode === "gallery" || !!isMerging}
-            data-tooltip="Bookmarks"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 2h8a1 1 0 0 1 1 1v11l-5-3-5 3V3a1 1 0 0 1 1-1Z" />
-            </svg>
-          </button>
-          <button
-            onClick={onToggleGallery}
-            className={viewMode === "gallery" ? "tool-active" : ""}
-            disabled={!!isMerging}
-            data-tooltip="Gallery View"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="1" y="1" width="6" height="6" rx="1" />
-              <rect x="9" y="1" width="6" height="6" rx="1" />
-              <rect x="1" y="9" width="6" height="6" rx="1" />
-              <rect x="9" y="9" width="6" height="6" rx="1" />
-            </svg>
-          </button>
+          <div className="toolbar-group">
+            <button
+              onClick={onToggleSidebar}
+              className={sidebarOpen && viewMode === "scroll" ? "tool-active" : ""}
+              disabled={viewMode === "gallery" || !!isMerging}
+              data-tooltip="Thumbnails"
+            >
+              ☰
+            </button>
+            <button
+              onClick={onToggleBookmarks}
+              className={bookmarksOpen && viewMode === "scroll" ? "tool-active" : ""}
+              disabled={viewMode === "gallery" || !!isMerging}
+              data-tooltip="Bookmarks"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 2h8a1 1 0 0 1 1 1v11l-5-3-5 3V3a1 1 0 0 1 1-1Z" />
+              </svg>
+            </button>
+            <button
+              onClick={onToggleGallery}
+              className={viewMode === "gallery" ? "tool-active" : ""}
+              disabled={!!isMerging}
+              data-tooltip="Gallery View"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="1" y="1" width="6" height="6" rx="1" />
+                <rect x="9" y="1" width="6" height="6" rx="1" />
+                <rect x="1" y="9" width="6" height="6" rx="1" />
+                <rect x="9" y="9" width="6" height="6" rx="1" />
+              </svg>
+            </button>
+          </div>
 
-          <div className="toolbar-divider" />
-          <button onClick={onPrevPage} disabled={currentPage <= 1}>
-            ‹
-          </button>
+          <div className="toolbar-group">
+            <button onClick={onPrevPage} disabled={currentPage <= 1}>
+              ‹
+            </button>
           <span className="page-info">
             <input
               className="page-input"
@@ -210,58 +212,59 @@ export function Toolbar({
             />
             <span className="page-total">/ {totalPages}</span>
           </span>
-          <button onClick={onNextPage} disabled={currentPage >= totalPages}>
-            ›
-          </button>
+            <button onClick={onNextPage} disabled={currentPage >= totalPages}>
+              ›
+            </button>
+          </div>
 
-          <div className="toolbar-divider" />
-          <button onClick={zoomOut} disabled={zoom <= ZOOM_STEPS[0]}>
-            −
-          </button>
-          <input
-            className="zoom-input"
-            value={zoomInput !== null ? zoomInput : `${Math.round(zoom * 100)}%`}
-            onChange={(e) => setZoomInput(e.target.value)}
-            onFocus={(e) => {
-              setZoomInput(String(Math.round(zoom * 100)));
-              // Select all text on focus so you can just type a new value
-              requestAnimationFrame(() => e.target.select());
-            }}
-            onBlur={commitZoomInput}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                commitZoomInput();
-                (e.target as HTMLInputElement).blur();
-              }
-              if (e.key === "Escape") {
-                setZoomInput(null);
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-          />
-          <button onClick={zoomIn} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}>
-            +
-          </button>
-          <button onClick={onFitWidth} data-tooltip="Fit Width">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1 4V12H15V4H1Z" />
-              <path d="M4 8H1M15 8H12" />
-              <path d="M3 6L1 8L3 10" />
-              <path d="M13 6L15 8L13 10" />
-            </svg>
-          </button>
-          <button onClick={onFitPage} data-tooltip="Fit Page">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="1" width="10" height="14" rx="1" />
-              <path d="M6 5L3 8L6 11" />
-              <path d="M10 5L13 8L10 11" />
-              <path d="M3 8H6M13 8H10" />
-            </svg>
-          </button>
+          <div className="toolbar-group">
+            <button onClick={zoomOut} disabled={zoom <= ZOOM_STEPS[0]}>
+              −
+            </button>
+            <input
+              className="zoom-input"
+              value={zoomInput !== null ? zoomInput : `${Math.round(zoom * 100)}%`}
+              onChange={(e) => setZoomInput(e.target.value)}
+              onFocus={(e) => {
+                setZoomInput(String(Math.round(zoom * 100)));
+                // Select all text on focus so you can just type a new value
+                requestAnimationFrame(() => e.target.select());
+              }}
+              onBlur={commitZoomInput}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  commitZoomInput();
+                  (e.target as HTMLInputElement).blur();
+                }
+                if (e.key === "Escape") {
+                  setZoomInput(null);
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+            />
+            <button onClick={zoomIn} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}>
+              +
+            </button>
+            <button onClick={onFitWidth} data-tooltip="Fit Width">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 4V12H15V4H1Z" />
+                <path d="M4 8H1M15 8H12" />
+                <path d="M3 6L1 8L3 10" />
+                <path d="M13 6L15 8L13 10" />
+              </svg>
+            </button>
+            <button onClick={onFitPage} data-tooltip="Fit Page">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="1" width="10" height="14" rx="1" />
+                <path d="M6 5L3 8L6 11" />
+                <path d="M10 5L13 8L10 11" />
+                <path d="M3 8H6M13 8H10" />
+              </svg>
+            </button>
+          </div>
 
           {isMerging ? (
-            <>
-              <div className="toolbar-divider" />
+            <div className="toolbar-group">
               <button onClick={onAddDocument} data-tooltip="Add another PDF">
                 Merge PDF
               </button>
@@ -271,10 +274,10 @@ export function Toolbar({
               <button onClick={onExitMerge} data-tooltip="Exit merge mode">
                 Exit Merge
               </button>
-            </>
+            </div>
           ) : (
             <>
-              <div className="toolbar-divider" />
+              <div className="toolbar-group">
               <button
                 onClick={() => onToolChange(activeTool === "highlight" ? "none" : "highlight")}
                 className={activeTool === "highlight" ? "tool-active" : ""}
@@ -443,7 +446,8 @@ export function Toolbar({
                 )}
               </div>
 
-              <div className="toolbar-divider" />
+              </div>
+              <div className="toolbar-group">
               <div className="save-tool-group" ref={saveMenuRef}>
                 <button onClick={onSave} disabled={!hasUnsavedChanges}>
                   Save
@@ -476,7 +480,7 @@ export function Toolbar({
                           onSaveLocked();
                         }}
                       >
-                        Save As Locked…
+                        Save Flattened…
                       </button>
                     )}
                     {onExportPages && (
@@ -525,6 +529,7 @@ export function Toolbar({
               <button onClick={onPrint} data-tooltip={`Print (${mod}+P)`}>
                 Print
               </button>
+              </div>
             </>
           )}
         </>
