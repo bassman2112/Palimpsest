@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PdfDocument, PdfRenderTask, PdfLayerHandle } from "../lib/pdf";
 import { getEngine } from "../lib/pdf";
 import type { PageDimension, Annotation, AnnotationTool } from "../types";
 import type { SearchMatch } from "../hooks/useTextSearch";
 import { AnnotationOverlay } from "./AnnotationOverlay";
+import { PageContextMenu } from "./PageContextMenu";
 
 interface PageCanvasProps {
   pdfDoc: PdfDocument;
@@ -22,6 +23,8 @@ interface PageCanvasProps {
   searchMatches: SearchMatch[];
   selectedMatchIndex: number;
   pendingSignature?: string | null;
+  isBookmarked?: boolean;
+  onToggleBookmark?: () => void;
 }
 
 export function PageCanvas({
@@ -41,6 +44,8 @@ export function PageCanvas({
   searchMatches,
   selectedMatchIndex,
   pendingSignature,
+  isBookmarked,
+  onToggleBookmark,
 }: PageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -53,6 +58,22 @@ export function PageCanvas({
   const prevRenderKeyRef = useRef("");
   // Bumped after text layer renders so the highlight effect re-runs
   const [textLayerReady, setTextLayerReady] = useState(0);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (!onToggleBookmark) return;
+      const target = e.target as HTMLElement;
+      // Let native context menu through for annotation overlay and annotation layer (form fields, links)
+      if (target.closest(".annotation-overlay") || target.closest(".annotationLayer a")) return;
+      // Let native menu through if there's a text selection (for Copy)
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) return;
+      e.preventDefault();
+      setContextMenu({ x: e.clientX, y: e.clientY });
+    },
+    [onToggleBookmark]
+  );
 
   const scaledWidth = dimension.width * zoom;
   const scaledHeight = dimension.height * zoom;
@@ -207,6 +228,7 @@ export function PageCanvas({
       className="page-container"
       data-page-number={dimension.pageNumber}
       style={{ width: scaledWidth, height: scaledHeight }}
+      onContextMenu={handleContextMenu}
     >
       <canvas
         ref={canvasRef}
@@ -238,6 +260,16 @@ export function PageCanvas({
             pendingSignature={pendingSignature}
           />
         </>
+      )}
+      {contextMenu && onToggleBookmark && (
+        <PageContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          pageNumber={dimension.pageNumber}
+          isBookmarked={isBookmarked ?? false}
+          onToggleBookmark={onToggleBookmark}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

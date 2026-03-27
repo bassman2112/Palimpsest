@@ -6,7 +6,16 @@ mod menu;
 pub use types::*;
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
+
+static EXIT_CONFIRMED: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+fn confirm_and_exit(app_handle: tauri::AppHandle) {
+    EXIT_CONFIRMED.store(true, Ordering::SeqCst);
+    app_handle.exit(0);
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -92,23 +101,33 @@ pub fn run() {
             commands::apply_single_redaction,
             commands::apply_redactions,
             commands::export_page_image,
-            commands::check_for_updates
+            commands::check_for_updates,
+            confirm_and_exit
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle: &tauri::AppHandle, event| {
-        #[cfg(target_os = "macos")]
-        if let tauri::RunEvent::Opened { urls } = &event {
-            for url in urls {
-                if let Ok(path) = url.to_file_path() {
-                    if let Some(ext) = path.extension() {
-                        if ext.eq_ignore_ascii_case("pdf") {
-                            let _ = app_handle.emit("open-file-path", path.to_string_lossy().to_string());
+        match &event {
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => {
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        if let Some(ext) = path.extension() {
+                            if ext.eq_ignore_ascii_case("pdf") {
+                                let _ = app_handle.emit("open-file-path", path.to_string_lossy().to_string());
+                            }
                         }
                     }
                 }
             }
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                if !EXIT_CONFIRMED.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                    let _ = app_handle.emit("check-quit", ());
+                }
+            }
+            _ => {}
         }
-        let _ = (app_handle, event);
+        let _ = app_handle;
     });
 }

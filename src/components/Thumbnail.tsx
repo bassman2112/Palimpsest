@@ -34,10 +34,21 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected,
   const scale = thumbWidth / dimension.width;
   const thumbHeight = dimension.height * scale;
 
+  // Track the scale we last rendered at to detect size changes
+  const renderedScaleRef = useRef(0);
+
   // Reset rendered state when pdfDoc changes (e.g. after page reorder/delete)
   useEffect(() => {
     renderedRef.current = false;
+    renderedScaleRef.current = 0;
   }, [pdfDoc]);
+
+  // Also re-render when size changes significantly
+  useEffect(() => {
+    if (renderedRef.current && Math.abs(renderedScaleRef.current - scale) > 0.001) {
+      renderedRef.current = false;
+    }
+  }, [scale]);
 
   useEffect(() => {
     if (renderedRef.current || !canvasRef.current || !containerRef.current) return;
@@ -46,6 +57,7 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected,
       (entries) => {
         if (entries[0]?.isIntersecting && !renderedRef.current) {
           renderedRef.current = true;
+          renderedScaleRef.current = scale;
           renderThumb();
           observer.disconnect();
         }
@@ -55,7 +67,7 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected,
 
     observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [pdfDoc, dimension.pageNumber]);
+  }, [pdfDoc, dimension.pageNumber, scale]);
 
   async function renderThumb() {
     if (renderTaskRef.current) {
@@ -65,7 +77,8 @@ export function Thumbnail({ pdfDoc, dimension, isActive, isDragging, isSelected,
     try {
       const page = await pdfDoc.getPage(dimension.pageNumber);
       const viewport = page.getViewport(scale);
-      const task = page.renderToCanvas(canvasRef.current!, viewport);
+      const dpr = window.devicePixelRatio || 1;
+      const task = page.renderToCanvas(canvasRef.current!, viewport, { devicePixelRatio: dpr });
       renderTaskRef.current = task;
       await task.promise;
     } catch (err) {

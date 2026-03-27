@@ -136,6 +136,23 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
     const [outline, setOutline] = useState<OutlineItem[] | null>(null);
     const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
+    // Resizable sidebar
+    const SIDEBAR_MIN = 120;
+    const SIDEBAR_MAX = 400;
+    const SIDEBAR_DEFAULT = 200;
+    const SIDEBAR_STORAGE_KEY = "palimpsest-sidebar-width";
+    const [sidebarWidth, setSidebarWidth] = useState(() => {
+      const raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (raw) {
+        const n = parseInt(raw, 10);
+        if (!isNaN(n)) return Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, n));
+      }
+      return SIDEBAR_DEFAULT;
+    });
+    const sidebarWidthRef = useRef(sidebarWidth);
+    sidebarWidthRef.current = sidebarWidth;
+    const sidebarThumbSize = Math.max(80, sidebarWidth - 40);
+
     const scrollToPageRef = useRef<((page: number) => void) | null>(null);
     const viewerContainerRef = useRef<HTMLDivElement | null>(null);
     const searchBarRef = useRef<SearchBarHandle>(null);
@@ -149,6 +166,31 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
 
     const fileName = metadata?.path.split(/[\\/]/).pop() ?? null;
     const totalPages = pageDimensions.length;
+
+    const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = sidebarWidthRef.current;
+
+      const onMouseMove = (ev: MouseEvent) => {
+        const newWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startWidth + (ev.clientX - startX)));
+        setSidebarWidth(newWidth);
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(newWidth));
+      };
+
+      const onMouseUp = () => {
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      };
+
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    }, []);
+
+    const handleSidebarResetWidth = useCallback(() => {
+      setSidebarWidth(SIDEBAR_DEFAULT);
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(SIDEBAR_DEFAULT));
+    }, []);
 
     // Load initial path on mount
     const initialPathLoadedRef = useRef(false);
@@ -987,31 +1029,40 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
               ) : (
                 <>
                   {bookmarksOpen ? (
-                    <OutlineSidebar
-                      outline={outline ?? []}
-                      currentPage={currentPage}
-                      onPageClick={handleThumbnailClick}
-                      customBookmarks={customBookmarks}
-                      onRemoveBookmark={removeBookmark}
-                      onUpdateBookmarkLabel={updateBookmarkLabel}
-                    />
+                    <>
+                      <OutlineSidebar
+                        outline={outline ?? []}
+                        currentPage={currentPage}
+                        onPageClick={handleThumbnailClick}
+                        customBookmarks={customBookmarks}
+                        onRemoveBookmark={removeBookmark}
+                        onUpdateBookmarkLabel={updateBookmarkLabel}
+                        width={sidebarWidth}
+                      />
+                      <div className="sidebar-resize-handle" onMouseDown={handleSidebarResizeStart} onDoubleClick={handleSidebarResetWidth} title="Drag to resize, double-click to reset" />
+                    </>
                   ) : sidebarOpen ? (
-                    <ThumbnailSidebar
-                      pdfDoc={pdfDoc}
-                      pageDimensions={pageDimensions}
-                      currentPage={currentPage}
-                      getPageAnnotations={getPageAnnotations}
-                      onPageClick={handleThumbnailClick}
-                      onDeletePage={handleDeletePage}
-                      onReorderPage={handleReorderPage}
-                      onRotatePage={handleRotatePage}
-                      onExtractPages={handleExtractPages}
-                      onSplitPdf={handleSplitPdf}
-                      onInsertBlankPage={handleInsertBlankPage}
-                      onInsertImagePage={handleInsertImagePage}
-                      isBookmarked={isBookmarked}
-                      onToggleBookmark={toggleBookmark}
-                    />
+                    <>
+                      <ThumbnailSidebar
+                        pdfDoc={pdfDoc}
+                        pageDimensions={pageDimensions}
+                        currentPage={currentPage}
+                        getPageAnnotations={getPageAnnotations}
+                        onPageClick={handleThumbnailClick}
+                        onDeletePage={handleDeletePage}
+                        onReorderPage={handleReorderPage}
+                        onRotatePage={handleRotatePage}
+                        onExtractPages={handleExtractPages}
+                        onSplitPdf={handleSplitPdf}
+                        onInsertBlankPage={handleInsertBlankPage}
+                        onInsertImagePage={handleInsertImagePage}
+                        isBookmarked={isBookmarked}
+                        onToggleBookmark={toggleBookmark}
+                        width={sidebarWidth}
+                        thumbSize={sidebarThumbSize}
+                      />
+                      <div className="sidebar-resize-handle" onMouseDown={handleSidebarResizeStart} onDoubleClick={handleSidebarResetWidth} title="Drag to resize, double-click to reset" />
+                    </>
                   ) : null}
                   <PdfViewer
                     pdfDoc={pdfDoc}
@@ -1033,6 +1084,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
                     searchMatches={searchMatches}
                     currentMatch={currentMatch}
                     pendingSignature={pendingSignature}
+                    isBookmarked={isBookmarked}
+                    onToggleBookmark={toggleBookmark}
                   />
                 </>
               )}

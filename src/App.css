@@ -65,6 +65,11 @@ html, body, #root {
   flex-shrink: 0;
   overflow-x: auto;
   padding-left: 78px; /* space for macOS traffic lights */
+  scrollbar-width: none; /* Firefox */
+}
+
+.tab-bar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
 }
 
 .tab-drag-spacer {
@@ -741,6 +746,20 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+/* Sidebar resize handle */
+.sidebar-resize-handle {
+  width: 5px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: rgba(37, 99, 235, 0.3);
+}
+
 /* Outline / Bookmarks Sidebar */
 .outline-sidebar {
   width: 240px;
@@ -1058,6 +1077,50 @@ html, body, #root {
 
 .gallery-thumbnail {
   position: relative;
+}
+
+/* Gallery size controls */
+.gallery-size-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.gallery-size-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+}
+
+.gallery-size-btn:hover:not(:disabled) {
+  background: #eee;
+}
+
+.gallery-size-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.gallery-size-reset {
+  width: auto;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.gallery-size-slider {
+  width: 100px;
+  accent-color: #2563eb;
 }
 
 .gallery-drop-indicator {
@@ -1845,6 +1908,21 @@ html, body, #root {
 
   .gallery-selection-clear:hover {
     background: #444;
+  }
+
+  .gallery-size-btn {
+    background: #333;
+    border-color: #555;
+    color: #e8e8e8;
+  }
+
+  .gallery-size-btn:hover:not(:disabled) {
+    background: #444;
+  }
+
+  .sidebar-resize-handle:hover,
+  .sidebar-resize-handle:active {
+    background: rgba(96, 165, 250, 0.3);
   }
 
   .thumbnail-sidebar {

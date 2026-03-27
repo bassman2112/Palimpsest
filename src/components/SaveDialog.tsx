@@ -5,10 +5,11 @@ export type SaveDialogResult = "save" | "discard" | "cancel";
 
 interface SaveDialogProps {
   title: string;
+  message?: string;
   onResult: (result: SaveDialogResult) => void;
 }
 
-export function SaveDialog({ title, onResult }: SaveDialogProps) {
+export function SaveDialog({ title, message, onResult }: SaveDialogProps) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -24,7 +25,7 @@ export function SaveDialog({ title, onResult }: SaveDialogProps) {
     <div className="save-dialog-backdrop" onMouseDown={() => onResult("cancel")}>
       <div className="save-dialog" onMouseDown={(e) => e.stopPropagation()}>
         <div className="save-dialog-body">
-          <strong>&ldquo;{title}&rdquo;</strong> has unsaved changes.
+          {message ?? <><strong>&ldquo;{title}&rdquo;</strong> has unsaved changes.</>}
         </div>
         <div className="save-dialog-actions">
           <button

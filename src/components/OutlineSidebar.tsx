@@ -9,6 +9,7 @@ interface OutlineSidebarProps {
   customBookmarks?: CustomBookmark[];
   onRemoveBookmark?: (id: string) => void;
   onUpdateBookmarkLabel?: (id: string, label: string) => void;
+  width?: number;
 }
 
 function OutlineNode({
@@ -158,6 +159,7 @@ export function OutlineSidebar({
   customBookmarks,
   onRemoveBookmark,
   onUpdateBookmarkLabel,
+  width,
 }: OutlineSidebarProps) {
   const hasBookmarks = customBookmarks && customBookmarks.length > 0;
   const hasOutline = outline.length > 0;
@@ -165,14 +167,14 @@ export function OutlineSidebar({
 
   if (!hasBookmarks && !hasOutline) {
     return (
-      <div className="outline-sidebar">
+      <div className="outline-sidebar" style={width ? { width } : undefined}>
         <div className="outline-empty">No bookmarks or outline</div>
       </div>
     );
   }
 
   return (
-    <div className="outline-sidebar">
+    <div className="outline-sidebar" style={width ? { width } : undefined}>
       {hasBookmarks && (
         <>
           {showHeaders && <div className="outline-section-header">My Bookmarks</div>}

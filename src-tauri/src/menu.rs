@@ -22,7 +22,7 @@ pub(crate) fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Err
             &PredefinedMenuItem::hide_others(app, None)?,
             &PredefinedMenuItem::show_all(app, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, None)?,
+            &MenuItem::with_id(app, "quit", "Quit Palimpsest", true, Some("CmdOrCtrl+Q"))?,
         ],
     )?;
 
@@ -156,6 +156,9 @@ pub(crate) fn setup_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Err
             }
             "keyboard_shortcuts" => {
                 let _ = app.emit("menu-keyboard-shortcuts", ());
+            }
+            "quit" => {
+                let _ = app.emit("menu-quit", ());
             }
             other if other.starts_with("recent_") => {
                 if let Ok(idx) = other.strip_prefix("recent_").unwrap_or("").parse::<usize>() {

@@ -19,6 +19,8 @@ interface ThumbnailSidebarProps {
   onInsertImagePage?: (afterPage: number) => void;
   isBookmarked?: (pageNumber: number) => boolean;
   onToggleBookmark?: (pageNumber: number) => void;
+  width?: number;
+  thumbSize?: number;
 }
 
 interface DragState {
@@ -42,6 +44,8 @@ export function ThumbnailSidebar({
   onInsertImagePage,
   isBookmarked,
   onToggleBookmark,
+  width,
+  thumbSize,
 }: ThumbnailSidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ pageNumber: number; x: number; y: number } | null>(null);
@@ -292,7 +296,7 @@ export function ThumbnailSidebar({
       ref={sidebarRef}
       onPointerUp={handlePointerUp}
       onPointerMove={handlePreDragMove}
-      style={{ position: "relative", cursor: dragState ? "grabbing" : undefined }}
+      style={{ position: "relative", cursor: dragState ? "grabbing" : undefined, ...(width ? { width } : {}) }}
     >
       {pageDimensions.map((dim) => (
         <Thumbnail
@@ -301,6 +305,7 @@ export function ThumbnailSidebar({
           dimension={dim}
           isActive={dim.pageNumber === currentPage}
           isDragging={dragState?.pageNumber === dim.pageNumber}
+          size={thumbSize}
           annotations={getPageAnnotations?.(dim.pageNumber)}
           onClick={() => {
             if (!dragState) onPageClick(dim.pageNumber);

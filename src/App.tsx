@@ -36,6 +36,7 @@ function App() {
   const { recentFiles, addRecent } = useRecentFiles();
   const tabRefs = useRef<Map<string, DocumentViewHandle>>(new Map());
   const [closePrompt, setClosePrompt] = useState<{ id: string; title: string } | null>(null);
+  const [windowClosePrompt, setWindowClosePrompt] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
   useEffect(() => {
@@ -67,6 +68,50 @@ function App() {
   activeTabIdRef.current = activeTabId;
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+
+  // Prevent window close with unsaved changes (red close button)
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onCloseRequested((event) => {
+      const dirty = tabsRef.current.filter((t) => t.hasChanges);
+      if (dirty.length > 0) {
+        event.preventDefault();
+        setWindowClosePrompt(true);
+      }
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
+  // Handle quit request — triggered by Cmd+Q menu item and Dock quit
+  const handleQuitRequest = useCallback(() => {
+    const dirty = tabsRef.current.filter((t) => t.hasChanges);
+    if (dirty.length > 0) {
+      setWindowClosePrompt(true);
+    } else {
+      invoke("confirm_and_exit");
+    }
+  }, []);
+
+  const handleWindowCloseResult = useCallback(
+    async (result: SaveDialogResult) => {
+      setWindowClosePrompt(false);
+      if (result === "cancel") return;
+      if (result === "save") {
+        const dirty = tabsRef.current.filter((t) => t.hasChanges);
+        for (const t of dirty) {
+          tabRefs.current.get(t.id)?.save();
+        }
+        // Let saves flush
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      await invoke("confirm_and_exit");
+    },
+    []
+  );
+
+  const handleQuitRequestRef = useRef(handleQuitRequest);
+  handleQuitRequestRef.current = handleQuitRequest;
 
   // Sync recent files to native menu
   useEffect(() => {
@@ -243,6 +288,13 @@ function App() {
         });
       }
     });
+    // Cmd+Q / Dock Quit → check for unsaved changes
+    const unlistenMenuQuit = listen<void>("menu-quit", () => {
+      handleQuitRequestRef.current();
+    });
+    const unlistenCheckQuit = listen<void>("check-quit", () => {
+      handleQuitRequestRef.current();
+    });
     return () => {
       unlistenOpen.then((f) => f());
       unlistenRecent.then((f) => f());
@@ -265,6 +317,8 @@ function App() {
       unlistenReportBug.then((f) => f());
       unlistenKeyboardShortcuts.then((f) => f());
       unlistenOpenFilePath.then((f) => f());
+      unlistenMenuQuit.then((f) => f());
+      unlistenCheckQuit.then((f) => f());
     };
   }, [handleCloseTab, handleNewTab]);
 
@@ -314,6 +368,13 @@ function App() {
         <SaveDialog
           title={closePrompt.title}
           onResult={handleClosePromptResult}
+        />
+      )}
+      {windowClosePrompt && (
+        <SaveDialog
+          title="Palimpsest"
+          message="You have unsaved changes in one or more tabs. Do you want to save before closing?"
+          onResult={handleWindowCloseResult}
         />
       )}
       {showShortcuts && (

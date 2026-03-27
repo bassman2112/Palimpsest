@@ -40,7 +40,20 @@ interface DragState {
   ghostY: number;
 }
 
-const GALLERY_THUMB_SIZE = 200;
+const GALLERY_THUMB_DEFAULT = 200;
+const GALLERY_THUMB_MIN = 120;
+const GALLERY_THUMB_MAX = 400;
+const GALLERY_THUMB_STEP = 40;
+const GALLERY_THUMB_STORAGE_KEY = "palimpsest-gallery-thumb-size";
+
+function getStoredThumbSize(): number {
+  const raw = localStorage.getItem(GALLERY_THUMB_STORAGE_KEY);
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (!isNaN(n)) return Math.max(GALLERY_THUMB_MIN, Math.min(GALLERY_THUMB_MAX, n));
+  }
+  return GALLERY_THUMB_DEFAULT;
+}
 
 function truncateFileName(name: string, max: number = 20): string {
   if (name.length <= max) return name;
@@ -73,6 +86,7 @@ export function PageGallery({
   onToggleBookmark,
 }: PageGalleryProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [thumbSize, setThumbSize] = useState(getStoredThumbSize);
   const [contextMenu, setContextMenu] = useState<{ pageNumber: number; x: number; y: number } | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<{ index: number; side: "left" | "right" } | null>(null);
@@ -89,6 +103,12 @@ export function PageGallery({
   const autoScrollSpeedRef = useRef(0);
   const autoScrollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dragSelectionRef = useRef<Set<number> | null>(null);
+
+  const handleThumbSizeChange = useCallback((size: number) => {
+    const clamped = Math.max(GALLERY_THUMB_MIN, Math.min(GALLERY_THUMB_MAX, size));
+    setThumbSize(clamped);
+    localStorage.setItem(GALLERY_THUMB_STORAGE_KEY, String(clamped));
+  }, []);
 
   const inMerge = isMerging && mergePages;
   const totalPages = inMerge ? mergePages.length : pageDimensions.length;
@@ -533,7 +553,43 @@ export function PageGallery({
       onPointerMove={handlePreDragMove}
       style={{ cursor: dragState ? "grabbing" : undefined }}
     >
-      <div className="page-gallery-grid">
+      <div className="gallery-size-controls">
+        <button
+          className="gallery-size-btn"
+          onClick={() => handleThumbSizeChange(thumbSize - GALLERY_THUMB_STEP)}
+          disabled={thumbSize <= GALLERY_THUMB_MIN}
+          title="Smaller thumbnails"
+        >
+          −
+        </button>
+        <input
+          type="range"
+          className="gallery-size-slider"
+          min={GALLERY_THUMB_MIN}
+          max={GALLERY_THUMB_MAX}
+          step={GALLERY_THUMB_STEP}
+          value={thumbSize}
+          onChange={(e) => handleThumbSizeChange(Number(e.target.value))}
+        />
+        <button
+          className="gallery-size-btn"
+          onClick={() => handleThumbSizeChange(thumbSize + GALLERY_THUMB_STEP)}
+          disabled={thumbSize >= GALLERY_THUMB_MAX}
+          title="Larger thumbnails"
+        >
+          +
+        </button>
+        {thumbSize !== GALLERY_THUMB_DEFAULT && (
+          <button
+            className="gallery-size-btn gallery-size-reset"
+            onClick={() => handleThumbSizeChange(GALLERY_THUMB_DEFAULT)}
+            title="Reset to default size"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      <div className="page-gallery-grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize + 20}px, 1fr))` }}>
         {inMerge
           ? mergePages!.map((mp, idx) => (
               <div key={mp.id} className="gallery-thumbnail">
@@ -543,7 +599,7 @@ export function PageGallery({
                   isActive={false}
                   isDragging={dragState?.mergeIndex === idx || (!!dragState?.multiDragIds && dragState.multiDragIds.includes(mp.id))}
                   isSelected={selectedIds.has(mp.id)}
-                  size={GALLERY_THUMB_SIZE}
+                  size={thumbSize}
                   label={`${truncateFileName(mp.sourceFileName, 16)} p${mp.sourcePageNumber}`}
                   onClick={(e) => handleMergeClick(idx, e)}
                   onDeleteMergePage={() => onMergeRemovePage?.(mp.id)}
@@ -559,7 +615,7 @@ export function PageGallery({
                   isActive={false}
                   isDragging={dragState?.pageNumber === dim.pageNumber || (!!dragState?.multiDragPages && dragState.multiDragPages.includes(dim.pageNumber))}
                   isSelected={selectedPages.has(dim.pageNumber)}
-                  size={GALLERY_THUMB_SIZE}
+                  size={thumbSize}
                   annotations={getPageAnnotations?.(dim.pageNumber)}
                   onClick={(e) => handleNormalClick(dim.pageNumber, e)}
                   onDoubleClick={() => handleNormalDoubleClick(dim.pageNumber)}

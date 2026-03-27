@@ -28,6 +28,8 @@ interface PdfViewerProps {
   searchMatches: SearchMatch[];
   currentMatch: SearchMatch | null;
   pendingSignature?: string | null;
+  isBookmarked?: (pageNumber: number) => boolean;
+  onToggleBookmark?: (pageNumber: number) => void;
 }
 
 export function PdfViewer({
@@ -50,6 +52,8 @@ export function PdfViewer({
   searchMatches,
   currentMatch,
   pendingSignature,
+  isBookmarked,
+  onToggleBookmark,
 }: PdfViewerProps) {
   const { containerRef, visiblePages, currentPage, scrollToPage } = usePageVisibility({
     zoom,
@@ -147,6 +151,8 @@ export function PdfViewer({
             searchMatches={pageMatches}
             selectedMatchIndex={selectedMatchIndex}
             pendingSignature={pendingSignature}
+            isBookmarked={isBookmarked?.(dim.pageNumber)}
+            onToggleBookmark={onToggleBookmark ? () => onToggleBookmark(dim.pageNumber) : undefined}
           />
         );
       })}
