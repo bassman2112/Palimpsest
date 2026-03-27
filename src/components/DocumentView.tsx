@@ -601,13 +601,13 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       try {
         if (hasChanges) await handleSave();
         const dest = await save({
-          title: "Save Locked Copy",
+          title: "Save Flattened Copy",
           filters: [{ name: "PDF", extensions: ["pdf"] }],
         });
         if (!dest) return;
         await invoke("save_locked", { source: metadata.path, dest });
       } catch (err) {
-        console.error("Failed to save locked PDF:", err);
+        console.error("Failed to save flattened PDF:", err);
       }
     }, [metadata?.path, hasChanges, handleSave]);
 

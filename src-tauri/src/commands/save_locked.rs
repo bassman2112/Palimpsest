@@ -1,9 +1,10 @@
 use lopdf::{Document, Object, Dictionary, ObjectId};
 
 use crate::pdf_utils::{
-    resolve_object, parse_rect, obj_to_f64, pdf_escape_text,
+    resolve_object, parse_rect, obj_to_f64,
     is_palimpsest_annotation, get_existing_annots,
     add_page_ext_gstate, add_page_xobject, add_page_font,
+    utf8_to_pdf_hex, wrap_text_for_pdf,
 };
 
 /// Save a "locked" copy of the PDF: flatten palimpsest annotations into page
@@ -377,7 +378,7 @@ pub fn save_locked(source: String, dest: String) -> Result<(), String> {
                         _ => None,
                     });
 
-                if let Some((rx, ry, _rx2, ry2)) = rect {
+                if let Some((rx, _ry, rx2, ry2)) = rect {
                     // Parse DA for font/size/color
                     let mut font_name_str = "Helvetica".to_string();
                     let mut font_size = 16.0_f64;
@@ -411,28 +412,30 @@ pub fn save_locked(source: String, dest: String) -> Result<(), String> {
                     let font_key = format!("PF{}", sig_counter);
                     sig_counter += 1;
 
-                    // Create font dict for the standard 14 font
+                    // Create font dict with WinAnsiEncoding for proper character support
                     let mut font_dict = Dictionary::new();
                     font_dict.set("Type", Object::Name(b"Font".to_vec()));
                     font_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
                     font_dict.set("BaseFont", Object::Name(font_name_str.as_bytes().to_vec()));
+                    font_dict.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
                     let font_id = doc.add_object(Object::Dictionary(font_dict));
                     add_page_font(&mut doc, *page_id, &font_key, font_id);
 
-                    // Render text lines
-                    let lines: Vec<&str> = text.split('\n').collect();
-                    let text_y = ry2 - font_size; // Start from top of rect, descending
+                    // Word-wrap text to fit within annotation rect, then render
+                    let padding = 4.0; // small padding inside text box
+                    let usable_width = (rx2 - rx) - padding * 2.0;
+                    let lines = wrap_text_for_pdf(&text, usable_width, font_size);
+                    let text_y = ry2 - font_size - padding;
                     extra_content.push_str(&format!(
                         "q BT /{} {} Tf {} {} {} rg\n",
                         font_key, font_size, r, g, b
                     ));
                     for (i, line) in lines.iter().enumerate() {
                         let ly = text_y - (i as f64 * font_size * 1.3);
-                        if ly < ry { break; } // Don't go below rect
-                        let escaped = pdf_escape_text(line);
+                        let hex = utf8_to_pdf_hex(line);
                         extra_content.push_str(&format!(
-                            "{} {} Td ({}) Tj\n",
-                            rx, ly, escaped
+                            "1 0 0 1 {} {} Tm {} Tj\n",
+                            rx + padding, ly, hex
                         ));
                     }
                     extra_content.push_str("ET Q\n");
