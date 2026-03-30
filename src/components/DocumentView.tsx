@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask, save, open } from "@tauri-apps/plugin-dialog";
 import { useFileOpen } from "../hooks/useFileOpen";
@@ -763,6 +764,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
           if (pdf) {
             if (isMerging && viewMode === "gallery") {
               mergeAddDocumentByPath(pdf);
+            } else if (pdfDoc) {
+              // Already have a document open — open in a new tab
+              emit("open-file-path", pdf);
             } else {
               openPath(pdf);
             }
@@ -772,7 +776,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(
       return () => {
         unlisten.then((f) => f());
       };
-    }, [isActive, openPath, isMerging, viewMode, mergeAddDocumentByPath]);
+    }, [isActive, openPath, pdfDoc, isMerging, viewMode, mergeAddDocumentByPath]);
 
     // Detect form field changes
     useEffect(() => {
