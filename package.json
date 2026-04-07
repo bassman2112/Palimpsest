@@ -3,7 +3,7 @@
   "description": "A free PDF viewer and editor",
   "private": true,
   "license": "AGPL-3.0-only",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
