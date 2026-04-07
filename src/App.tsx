@@ -69,13 +69,19 @@ function App() {
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
 
-  // Prevent window close with unsaved changes (red close button)
+  // Prevent window close with unsaved changes (red close button / taskbar close)
   useEffect(() => {
-    const unlisten = getCurrentWindow().onCloseRequested((event) => {
+    const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
       const dirty = tabsRef.current.filter((t) => t.hasChanges);
       if (dirty.length > 0) {
         event.preventDefault();
         setWindowClosePrompt(true);
+      } else {
+        // No unsaved changes — set EXIT_CONFIRMED before Tauri's ExitRequested fires.
+        // Without this, the Rust ExitRequested handler calls api.prevent_exit() and
+        // the app never closes (especially visible on Windows).
+        event.preventDefault();
+        await invoke("confirm_and_exit");
       }
     });
     return () => {
