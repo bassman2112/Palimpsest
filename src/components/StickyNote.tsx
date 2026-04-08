@@ -73,10 +73,12 @@ export function StickyNote({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open]);
 
-  // Close popover on scroll (position would be stale)
+  // Close popover on document scroll (position would be stale),
+  // but ignore scroll events from inside the popover itself (e.g. textarea scrollbar).
   useEffect(() => {
     if (!open) return;
-    function handleScroll() {
+    function handleScroll(e: Event) {
+      if (popoverRef.current?.contains(e.target as Node)) return;
       setOpen(false);
     }
     document.addEventListener("scroll", handleScroll, true);
@@ -132,6 +134,7 @@ export function StickyNote({
             left: popoverPos.left,
           }}
           onMouseDown={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
         >
           <textarea
             ref={textareaRef}
